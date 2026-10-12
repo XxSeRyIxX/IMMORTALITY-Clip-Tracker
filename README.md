@@ -75,10 +75,6 @@ is not automatically shared between devices, browsers, the website and the
 desktop app. Clearing site data, removing a profile or closing a private browsing
 session can remove marks. Keep a progress code as a backup.
 
-Browser storage also belongs to the website address. Before moving to a new
-GitHub Pages address, export your progress code from the old page and import it
-at the new one. Desktop marks are not affected by the website address change.
-
 If browser storage becomes unavailable or unreadable, marks already held in
 memory are preserved and a warning appears. Export the progress code before
 closing the page; this cannot recover marks from a profile that was deleted.
@@ -142,8 +138,8 @@ pictures are next requested. A successful download is reused for the visit.
 
 `SaveGame.abr` is a .NET `BinaryFormatter` (MS-NRBF) stream and is *not*
 encrypted. The tracker reads its records directly as data, without executing
-game code or using .NET object deserialization. Both versions reject files over
-32 MiB; truncated streams are reported as damaged saves.
+game code or using .NET object deserialization. Files over 32 MiB are rejected,
+and truncated streams are reported as damaged saves.
 
 The browser and desktop share the same UI and clip logic. The native shell adds
 save discovery and a file picker. Its requests are serialized so overlapping
@@ -166,7 +162,7 @@ own classes declare them (`MetaData`, `VideoData`, `MaskData`, `KeyData`,
 has to end on the table's last byte, so a change in the layout fails loudly
 instead of producing plausible nonsense.
 
-That gives what no spreadsheet had:
+That gives what a spreadsheet cannot:
 
 * Every clip's film, take and date, exactly as the game labels it.
 * **Every** clickable thing in a clip, under the name the game shows for it, with
@@ -209,7 +205,7 @@ the letterboxed picture once, so the app only places a ring.
 Frame numbers count in each video's own rate, and the rates differ: most clips
 run at 24 fps, but many at 48 and a few at 16 or 50. Assuming 24 sends every
 picture from a 48 fps clip to twice the right time. The generator checks every
-keyframe's stored frame number against its time, which is how that was caught.
+keyframe's stored frame number against its time to catch exactly that.
 
 All 702 match-cuts have a ring, routes to the same object share a frame, and
 every picture together is 3.3 MB.
@@ -333,7 +329,7 @@ Use Node.js 24 for the tests and local web server. The desktop build also needs
 the [.NET 10 SDK](https://dotnet.microsoft.com/download). Python and a game
 installation are needed only when regenerating data.
 
-### The web version
+### The web app
 
 There is nothing to build. Serve the folder over HTTP (opening the file directly
 stops it loading its data), with caching off so edits show on reload:
@@ -347,7 +343,7 @@ deployment files change on `main`. Set **Source: GitHub Actions** in the reposit
 settings. During development, unregister the service worker in browser developer
 tools if a cached copy obscures a failed network request.
 
-### The desktop version
+### The desktop app
 
 Windows uses the WebView2 Runtime, normally already installed. macOS uses its
 built-in WebKit. On Linux, install WebKitGTK (`libwebkit2gtk-4.1-0`).
@@ -380,14 +376,14 @@ to be an `.app` *bundle*, a folder, and a folder cannot be a release asset.
 #### Why a webview and not a native toolkit
 
 The app reads a file and renders a list. Writing that screen twice, once in XAML
-and once in HTML, meant every change had to be made, and verified, in both. The
+and once in HTML, would mean making and verifying every change in both. The
 shell hosts the web build in the operating system's own webview
 (WebView2, WKWebView, WebKitGTK), so there is a single UI to maintain and the app
 looks exactly like the website.
 
 What the desktop build adds over the browser is `SaveLocator`: it knows the Unity,
 Steam, Proton and Flatpak paths and finds the save without being told. That is the
-reason it still exists.
+reason it exists.
 
 ### Tests
 
@@ -483,7 +479,7 @@ This is mostly glue. The work it is built on:
 
 | | |
 | --- | --- |
-| [The clip list](https://steamcommunity.com/sharedfiles/filedetails/?id=3342793414) | first mapped every clip's film, take and date; now a cross-check for the game's own data. Derived in turn from the [completionist guide](https://steamcommunity.com/sharedfiles/filedetails/?id=2860754029) |
+| [The clip list](https://steamcommunity.com/sharedfiles/filedetails/?id=3342793414) | first mapped every clip's film, take and date; used here as a cross-check for the game's own data. Derived in turn from the [completionist guide](https://steamcommunity.com/sharedfiles/filedetails/?id=2860754029) |
 | [Reading the save](https://steamcommunity.com/sharedfiles/filedetails/?id=3731545899) | worked out that `SaveGame.abr` holds your view history |
 | [The idea](https://steamcommunity.com/sharedfiles/filedetails/?id=3204009205) | the original "which videos have I missed" counter |
 

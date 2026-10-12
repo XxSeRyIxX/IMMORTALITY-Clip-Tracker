@@ -102,6 +102,7 @@ jobs:
 
       # macOS only treats it as a GUI program inside a real .app bundle, and a
       # bundle is a folder, so it has to be delivered inside a disk image.
+      # macOS keeps the app's stored marks per bundle id, so keep it stable.
       - name: Stage (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -117,7 +118,7 @@ jobs:
           <dict>
             <key>CFBundleName</key><string>IMMORTALITY Clip Tracker</string>
             <key>CFBundleDisplayName</key><string>IMMORTALITY Clip Tracker</string>
-            <key>CFBundleIdentifier</key><string>io.github.vseryi.immortalitycliptracker</string>
+            <key>CFBundleIdentifier</key><string>io.github.xxseryixx.immortalitycliptracker</string>
             <key>CFBundleVersion</key><string>${{ steps.version.outputs.value }}</string>
             <key>CFBundleShortVersionString</key><string>${{ steps.version.outputs.value }}</string>
             <key>CFBundlePackageType</key><string>APPL</string>

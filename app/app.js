@@ -758,9 +758,7 @@ function showLoadedClips() {
   state.selected = null;
   state.revealed.clear();
   state.revealedDetails.clear();
-  savePrefs();
-  syncControls();
-  render();
+  applyPrefs();
 }
 
 const basename = path => String(path).split(/[\\/]/).pop();
@@ -779,6 +777,12 @@ function syncControls() {
   for (const button of $('filters').children) {
     button.setAttribute('aria-pressed', button.dataset.filter === state.filter);
   }
+}
+
+function applyPrefs() {
+  syncControls();
+  savePrefs();
+  render();
 }
 
 /* ------------------------------------------------------------------ *
@@ -1038,9 +1042,7 @@ function applyLevel(level) {
   state.level = level;
   state.revealed.clear();
   state.revealedDetails.clear();
-  syncControls();
-  savePrefs();
-  render();
+  applyPrefs();
 }
 
 let pendingLevel = 0;
@@ -1057,9 +1059,7 @@ $('warn-no').addEventListener('click', () => $('warn').close());
 $('secrets').addEventListener('click', () => {
   state.secrets = !state.secrets;
   state.selected = null;
-  syncControls();
-  savePrefs();
-  render();
+  applyPrefs();
 });
 
 document.querySelectorAll('[data-more]').forEach(button =>
@@ -1070,9 +1070,7 @@ $('filters').addEventListener('click', e => {
   if (!button) return;
   state.filter = button.dataset.filter;
   state.selected = null;
-  syncControls();
-  savePrefs();
-  render();
+  applyPrefs();
 });
 
 document.addEventListener('keydown', e => {
