@@ -1,20 +1,20 @@
 # IMMORTALITY Clip Tracker
 
-[![build](https://github.com/VSeryi/IMMORTALITY-Clip-Tracker/actions/workflows/build.yml/badge.svg)](https://github.com/VSeryi/IMMORTALITY-Clip-Tracker/actions/workflows/build.yml)
-[![pages](https://github.com/VSeryi/IMMORTALITY-Clip-Tracker/actions/workflows/pages.yml/badge.svg)](https://github.com/VSeryi/IMMORTALITY-Clip-Tracker/actions/workflows/pages.yml)
+[![build](https://github.com/XxSeRyIxX/IMMORTALITY-Clip-Tracker/actions/workflows/build.yml/badge.svg)](https://github.com/XxSeRyIxX/IMMORTALITY-Clip-Tracker/actions/workflows/build.yml)
+[![pages](https://github.com/XxSeRyIxX/IMMORTALITY-Clip-Tracker/actions/workflows/pages.yml/badge.svg)](https://github.com/XxSeRyIxX/IMMORTALITY-Clip-Tracker/actions/workflows/pages.yml)
 
 Reads your [IMMORTALITY](https://store.steampowered.com/app/1350200/IMMORTALITY/)
-save and tells you exactly which clips you are still missing, and how to reach
-each one.
+save, or the clips you mark by hand on a console, and tells you exactly which
+clips you are still missing, and how to reach each one.
 
-**[Open it in your browser](https://vseryi.github.io/IMMORTALITY-Clip-Tracker/)**,
+**[Open it in your browser](https://xxseryixx.github.io/IMMORTALITY-Clip-Tracker/)**,
 nothing to install. Or [download the app](../../releases) for Windows, macOS or
 Linux, which finds your save on its own.
 
 Your save is read on your own machine. It is never uploaded.
 
 > The app is spoiler-free until you ask it for more, and so is this page: how
-> the game works underneath is folded away under **Spoilers** further down.
+> the game works underneath is folded away under **Game Internals And Spoilers**.
 
 ## Use it
 
@@ -29,11 +29,64 @@ Can't find it? Steam keeps a copy. There is a
 [Steam Cloud](https://store.steampowered.com/account/remotestorageapp/?appid=1350200)
 link on the page.
 
-Whichever save you open is remembered, so later visits read it again by
-themselves and **Reload** picks up your latest progress without you finding the
-file. The handle lives in your browser and the file is only read when you open
-the page. Chromium-based browsers only; everywhere else, drag and drop still
-works.
+Chromium-based browsers can remember the selected file handle. Later visits can
+read it again, sometimes after asking for permission, and **Reload** reads the
+same save. Other browsers use file selection or drag and drop. A rejected file
+never replaces the last successfully loaded save.
+
+When save reads overlap, the most recently requested save or mode takes priority.
+An older read cannot switch you out of manual mode, replace the current source,
+or hide the newer operation's loading indicator.
+
+### No save file?
+
+On a console, or anywhere the save cannot be reached, choose **Mark clips by
+hand** on the start page. **Mark found** in the header then finds a clip by what
+the game writes under it, the film, the take and the date, or by a few words of
+what is said in it, and marks it found or missing. Only clips that match what you
+type are shown. Each clip's details have the same button.
+
+Marks are kept on the device as you go, in the browser or in the desktop app, and
+the next visit opens straight to them. To move them to another device or keep a
+backup, copy the progress code under **Mark found** and load it there: one short
+line that holds nothing but which clips are marked.
+
+In the browser, **Save as file** and **Open a file** do the same transfer using a
+text file. The desktop app uses copy and paste. Importing replaces the existing
+marks; the confirmation includes the previous code so that it can be restored.
+Loading a game save leaves your manual marks intact for when you switch back.
+
+Closing the marking dialog, switching modes or changing marks cancels a pending
+progress-file import. A newer file or pasted-code import takes precedence, so a
+slow earlier read cannot replace more recent progress.
+
+Import checks the code's structure, checksum and expected clip count before
+changing any marks. Rejected imports leave the current progress alone. Existing
+valid `ICT1-` codes keep the same format and remain compatible.
+
+The desktop app runs one instance at a time, keeping its local storage address
+stable between visits. A second launch exits; use the existing window. No second
+progress store is created.
+
+### Storage And Privacy
+
+Progress belongs to the current browser profile or desktop webview profile. It
+is not automatically shared between devices, browsers, the website and the
+desktop app. Clearing site data, removing a profile or closing a private browsing
+session can remove marks. Keep a progress code as a backup.
+
+Browser storage also belongs to the website address. Before moving to a new
+GitHub Pages address, export your progress code from the old page and import it
+at the new one. Desktop marks are not affected by the website address change.
+
+If browser storage becomes unavailable or unreadable, marks already held in
+memory are preserved and a warning appears. Export the progress code before
+closing the page; this cannot recover marks from a profile that was deleted.
+
+The website requests its own scripts, clip data and pictures, and checks for
+updates. Saves and marks are processed locally and are never uploaded. The tracker
+has no accounts or analytics. Once visited online, it can work offline; pictures
+are available offline after they have been loaded at a picture-showing setting.
 
 ## Spoiler control
 
@@ -70,25 +123,34 @@ Every clip shows the scene it actually is, and every match-cut shows a frame of
 the clip it starts from, at the moment the object is on screen, with a ring
 around the place to click. Click any picture to see it larger.
 
-They all ship with the app in one archive, `app/pictures.bin`, and nothing is
-ever read off the machine running it. Each one is padded to the same 480x270
-box so narrow and wide films sit side by side without the list jumping.
+They ship in one [archive](app/pictures.bin), not from the player's game install.
+Each one is padded to the same 480x270 box so narrow and wide films sit side by
+side without the list jumping.
 
 They are frames from IMMORTALITY and are **not** covered by this project's
 licence. See [app/pictures.txt](app/pictures.txt) and the [NOTICE](NOTICE).
 
 The game contains nudity and the point of it is not knowing what is on the tapes,
 so they are packed into one archive rather than left as a browsable folder, the
-app asks before it starts showing them, and the archive is only fetched once you
-have said yes. That is packaging and courtesy, not protection: it is trivially
-unpacked.
+app has disclosure controls, and the archive is fetched only when pictures are
+requested. That is packaging and courtesy, not protection: it can be unpacked.
+
+If a picture download fails, the tracker still works without it and retries when
+pictures are next requested. A successful download is reused for the visit.
 
 ## How it works
 
 `SaveGame.abr` is a .NET `BinaryFormatter` (MS-NRBF) stream and is *not*
-encrypted, so it is read directly. No online save editor, no JSON export,
-no network requests. What it reads from the save is under the spoilers at the end
-of this section.
+encrypted. The tracker reads its records directly as data, without executing
+game code or using .NET object deserialization. Both versions reject files over
+32 MiB; truncated streams are reported as damaged saves.
+
+The browser and desktop share the same UI and clip logic. The native shell adds
+save discovery and a file picker. Its requests are serialized so overlapping
+operations cannot consume each other's replies.
+
+<details>
+<summary><b>Game Internals And Spoilers</b></summary>
 
 ### Where the clip list comes from
 
@@ -175,34 +237,6 @@ RAD Game Tools' proprietary codec, and the game carries RAD's own runtime for it
 exactly as the game plays it, straight from where it is, in about a tenth of a
 second. That also makes the generator Windows only.
 
-The unmerged FFmpeg decoder
-([xypwn/ffmpeg-bink2-builds](https://github.com/xypwn/ffmpeg-bink2-builds)) was
-tried first. It crashed on, or smeared, about four clips in ten and could only
-reach a frame by decoding everything before it.
-
-### Building the data
-
-[tools/make-data.py](tools/make-data.py) does all of it in about a minute. It
-needs a local copy of the game and nothing else, not even a save, and is run by
-hand:
-
-```bash
-python -m venv tools/.venv
-tools/.venv/Scripts/python -m pip install Pillow UnityPy
-tools/.venv/Scripts/python tools/make-data.py "<game>/Immortality_Data"
-```
-
-Pictures already made are kept in `tools/.work`, so running it again only makes
-what is new.
-
-### Spoilers
-
-The rest of how it works is the game's own rules, which are part of what there is
-to discover. Open it only if you do not mind knowing.
-
-<details>
-<summary><b>Secret clips, the ending, and what the save holds</b></summary>
-
 #### What the save holds
 
 | Field | Used for |
@@ -215,6 +249,12 @@ to discover. Open it only if you do not mind knowing.
 `AssignedSecrets` is randomised per save, so no static guide can know it. That is
 why the app can point at the exact clip to revisit instead of offering a vague
 hint.
+
+Clips marked by hand stand in for `ViewHistory`. The first view of a clip adds its
+normalised theme vector to the three scores. The shipped metadata carries rounded
+weights, so manual mode estimates those scores; save mode reads them directly.
+Manual mode cannot know where each free-floating secret landed, so all its
+possible clips are listed.
 
 #### How many clips there are
 
@@ -265,6 +305,8 @@ app/                  the tracker, plain HTML, CSS and JS, no build step
   index.html          the page and its dialogs
   app.js              UI
   core.js             save reader and clip logic, no DOM
+  loading.js          cancellation and loading-state ownership, no DOM
+  native.js           serialized native bridge, no DOM
   style.css
   sw.js               offline cache for the installed web app
   clips.json          every clip and every way into it, from the game
@@ -277,12 +319,19 @@ shell/                native wrapper around app/
   SaveLocator.cs      the folders searched on each OS
 tools/make-data.py    regenerates clips.json and the pictures from the game
 tools/make-icon.ps1   regenerates shell/icon.ico and app/icon.png
+tools/requirements.txt  tested generator dependencies
+tests/               Node regression tests and headless desktop checks
+.github/workflows/   shared checks, desktop builds and Pages deployment
 ```
 
-There is **one** implementation. `app/` is the product; the desktop build wraps
-the very same files, so the two can never drift apart.
+There is **one** UI implementation. A desktop release embeds the web files from
+the commit it was built from; the website follows `main`.
 
 ## Build
+
+Use Node.js 24 for the tests and local web server. The desktop build also needs
+the [.NET 10 SDK](https://dotnet.microsoft.com/download). Python and a game
+installation are needed only when regenerating data.
 
 ### The web version
 
@@ -290,22 +339,32 @@ There is nothing to build. Serve the folder over HTTP (opening the file directly
 stops it loading its data), with caching off so edits show on reload:
 
 ```bash
-npx http-server app -p 8099 -c-1
+npx --yes http-server app -a 127.0.0.1 -p 8099 -c-1
 ```
 
-GitHub Pages publishes `app/` as-is on every push to `main`. Pages must be set to
-**Source: GitHub Actions** in the repository settings.
+GitHub Pages publishes the web folder after the shared checks pass when app or
+deployment files change on `main`. Set **Source: GitHub Actions** in the repository
+settings. During development, unregister the service worker in browser developer
+tools if a cached copy obscures a failed network request.
 
 ### The desktop version
 
-Needs the [.NET 10 SDK](https://dotnet.microsoft.com/download). On Linux it also
-needs WebKitGTK (`libwebkit2gtk-4.1-0`), which is the system webview.
+Windows uses the WebView2 Runtime, normally already installed. macOS uses its
+built-in WebKit. On Linux, install WebKitGTK (`libwebkit2gtk-4.1-0`).
+
+Downloads are unsigned. Only override an unknown-publisher warning for a release
+you trust. On macOS, after attempting to open it, use **System Settings > Privacy
+& Security > Open Anyway**, following [Apple's guidance](https://support.apple.com/en-us/102445).
 
 ```bash
 dotnet run --project shell
 ```
 
 Add `-- --dev` to that to turn on the webview's developer tools.
+
+The shell serves only embedded assets at `http://127.0.0.1:48288`. If that port is
+unavailable, it shows an error instead of opening a different progress store.
+Close the conflicting process and reopen the tracker. Your marks are not changed.
 
 `app/` is embedded into the assembly, so the published executable carries the
 whole tracker. Any `-r` runtime identifier switches on the single-file settings:
@@ -330,17 +389,93 @@ What the desktop build adds over the browser is `SaveLocator`: it knows the Unit
 Steam, Proton and Flatpak paths and finds the save without being told. That is the
 reason it still exists.
 
-### Releasing
+### Tests
 
-Push a tag and the workflow builds all four platforms and publishes a GitHub
-release with the binaries attached:
+No npm packages or personal save files are needed:
 
 ```bash
-git tag v1.2.0
-git push origin v1.2.0
+node --test tests/*.test.cjs
+dotnet run --project tests/shell -c Release
+dotnet build shell -c Release
 ```
 
-The tag also sets the assembly version: `v1.2.3` becomes `1.2.3`.
+The Node tests cover progress codes, search, valid synthetic saves, malformed and
+oversized saves, generated-data references, packed pictures, overlapping and cancelled loads,
+native request ordering and offline caching. Parser fixtures are generated in
+memory, including object references and unused history slots; no personal save
+is checked in. The headless .NET checks exercise fragmented HTTP requests,
+header validation and save-file scanning without opening a webview. The shared
+[checks workflow](.github/workflows/checks.yml) runs both on Windows, macOS and
+Linux before desktop builds and Pages deployment.
+
+For UI changes, also check keyboard marking, import/export, switching between
+save and manual mode during a delayed read, reload persistence, blocked storage,
+closing the marking dialog during a delayed import, picture-download recovery
+and narrow-screen layouts in a browser.
+Test native storage with a temporary `WEBVIEW2_USER_DATA_FOLDER` on Windows so
+tests do not overwrite real marks. macOS and Linux still need platform-specific
+runtime smoke tests; compilation alone does not verify their webview behavior.
+
+### Regenerating Data
+
+[tools/make-data.py](tools/make-data.py) reads a local Windows game installation
+and regenerates the shipped metadata and pictures. No save file is needed.
+The current setup is tested with Python 3.13 and the direct dependencies in
+[tools/requirements.txt](tools/requirements.txt):
+
+```powershell
+python -m venv tools/.venv
+.\tools\.venv\Scripts\python -m pip install -r tools/requirements.txt
+.\tools\.venv\Scripts\python tools/make-data.py "<game>/Immortality_Data"
+node --test tests/*.test.cjs
+```
+
+Decoded pictures are cached under `tools/.work`. Clear that generated cache when
+changing the game installation or picture-generation logic, then regenerate.
+Do not hand-edit the generated data. The app and normal CI tests use the shipped
+assets and do not need the game or Python dependencies.
+
+The [icon generator](tools/make-icon.ps1) is also Windows-only. Virtual
+environments, decoded-frame caches, build output and personal saves are ignored
+by git. The local Steam-guide working folder stays excluded and is not needed
+to build or test the app.
+
+### Local Guide Artwork
+
+The optional `steam-guide/` authoring folder is deliberately excluded from git.
+When that folder is present, its Windows artwork generator and local checks run
+with the project environment:
+
+```powershell
+.\tools\.venv\Scripts\python -m pip install -r steam-guide/requirements.txt
+.\tools\.venv\Scripts\python steam-guide/make-art.py
+.\tools\.venv\Scripts\python steam-guide/make-art.py --check
+```
+
+The generator handles banners, the preview and the thank-you animation.
+Screenshots are captured separately in a fresh test browser profile, using
+synthetic progress. Hide complete totals and progress bars, replace game frames
+with opaque placeholders, and redact clip labels and progress codes before
+capture. Blurring a frame is not sufficient. Keep these capture-only changes out
+of the app source.
+
+The local check verifies image references, file integrity, dimensions, animation
+and balanced spoiler tags. A visual spoiler and text-layout review is still
+required. These authoring tools and images are not part of the application build.
+
+### Releasing
+
+Commit and push the tested changes to `main` before tagging so the website and
+desktop release use the same source. Replace `X.Y.Z` with an unused version:
+
+```bash
+git tag -a vX.Y.Z -m "Release X.Y.Z"
+git push origin vX.Y.Z
+```
+
+The tag runs the checks, builds all four platforms and publishes a GitHub release
+with the binaries attached. It also sets the assembly version. Tags do not deploy
+Pages, and published tags should not be moved to another commit.
 
 ## Credits
 

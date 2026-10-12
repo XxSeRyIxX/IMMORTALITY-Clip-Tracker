@@ -12,7 +12,7 @@ Windows only, because frames are decoded by the game's own Bink runtime.
 Run by hand:
 
     python -m venv tools/.venv
-    tools/.venv/Scripts/python -m pip install Pillow UnityPy
+    tools/.venv/Scripts/python -m pip install -r tools/requirements.txt
     tools/.venv/Scripts/python tools/make-data.py "<game>/Immortality_Data"
 
 Pictures already made are kept in tools/.work, so running it again only makes
@@ -371,16 +371,19 @@ def entrances(videos):
     return ways
 
 
+def theme(v):
+    """What watching the clip for the first time adds to the three hidden scores:
+    its theme vector normalised, or nothing when it has none (ClipScoreNormalized)."""
+    size = math.sqrt(sum(t * t for t in v["themes"]))
+    return [t / size for t in v["themes"]] if size > 1e-5 else [0.0, 0.0, 0.0]
+
+
 def ending(videos):
     """What starts the ending, from Game.CheckEndgame. Each time you leave a clip
     for the grid, it starts if 40% of every clip has been watched, a quarter of
     each of the three hidden theme scores is reached, 5 secrets and clips 188,
     267 and 269 have been seen, and the clip just left matters enough (0.75)."""
-    most = [0.0, 0.0, 0.0]                       # MetaData.MaxThemeScoreV
-    for v in videos.values():
-        size = math.sqrt(sum(t * t for t in v["themes"]))
-        if size > 1e-5:
-            most = [m + t / size for m, t in zip(most, v["themes"])]
+    most = [sum(axis) for axis in zip(*(theme(v) for v in videos.values()))]   # MetaData.MaxThemeScoreV
     return {"watch": -(-len(videos) * 2 // 5), "secrets": 5, "clips": [188, 267, 269],
             "themes": [round(m / 4, 3) for m in most],
             "key": [c for c in range(1, MAX_CLIP + 1) if videos[c]["importance"] >= 0.75]}
@@ -543,7 +546,7 @@ This project is not affiliated with, endorsed by, or connected to Half Mermaid
 Productions or Sam Barlow.
 
 If you are the rights holder and would like these removed, open an issue at
-https://github.com/VSeryi/IMMORTALITY-Clip-Tracker and they will be taken out
+https://github.com/XxSeRyIxX/IMMORTALITY-Clip-Tracker and they will be taken out
 immediately, no questions asked.
 
 IMMORTALITY: https://store.steampowered.com/app/1350200/IMMORTALITY/
@@ -591,7 +594,9 @@ def main(data_dir):
     for clip in range(1, MAX_CLIP + 1):
         v = videos[clip]
         row = {"id": clip, **labelled(v), "kind": "Clip" if v["type"] == NORMAL else "Secret",
-               "line": spoken(v["lines"][0]) if v["lines"] else ""}
+               "line": spoken(v["lines"][0]) if v["lines"] else "",
+               # Lets clips marked by hand give the same scores a save would.
+               "theme": [round(t, 4) for t in theme(v)]}
         # Neither a match-cut nor a rewind reaches it before this much of the game is seen.
         if v["gate"] > 0:
             row["gate"] = round(v["gate"] * 100, 1)

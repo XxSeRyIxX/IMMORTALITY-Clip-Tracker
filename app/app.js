@@ -9,6 +9,7 @@ const el = (tag, cls, text) => {
 };
 
 const PREFS_KEY = 'ict.prefs';
+const MARKS_KEY = 'ict.marks';
 const ALL_MOVIES = 'All movies';
 
 // Show me levels. From DETAILS on the app names clips and shows frames.
@@ -25,6 +26,7 @@ const state = {
   revealed: new Set(),
   revealedDetails: new Set(),
   warned: false,     // the spoiler and content warning has been accepted
+  manual: false,     // clips are marked by hand instead of read from a save
 };
 
 /* ------------------------------------------------------------------ *
@@ -37,6 +39,7 @@ function loadPrefs() {
     if (Number.isInteger(saved.level)) state.level = Math.min(Math.max(saved.level, 0), EVERYTHING);
     if (typeof saved.secrets === 'boolean') state.secrets = saved.secrets;
     if (typeof saved.warned === 'boolean') state.warned = saved.warned;
+    if (typeof saved.manual === 'boolean') state.manual = saved.manual;
     if (['missing', 'found', 'all'].includes(saved.filter)) state.filter = saved.filter;
   } catch { /* corrupt or unavailable storage is not worth reporting */ }
 }
@@ -45,7 +48,7 @@ function savePrefs() {
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify({
       level: state.level, secrets: state.secrets, filter: state.filter,
-      warned: state.warned,
+      warned: state.warned, manual: state.manual,
     }));
   } catch { /* private mode */ }
 }
@@ -100,18 +103,20 @@ function remember(handle) {
   handleStore('readwrite', store => store.put(handle, 'save')).catch(() => {});
 }
 
-async function readHandle(handle, { prompt }) {
+async function readHandle(handle, { prompt, signal }) {
   const opts = { mode: 'read' };
   let permission = await handle.queryPermission(opts);
+  checkLoad(signal);
   if (permission !== 'granted' && prompt) permission = await handle.requestPermission(opts);
+  checkLoad(signal);
   if (permission !== 'granted') {
     if (!prompt) return false;
     throw Tracker.saveError('The browser did not let the page read that file.',
       'Drag it onto the box instead.');
   }
 
-  source = { kind: 'handle', handle };
-  await applySave(await handle.getFile());
+  await applySave(await handle.getFile(), undefined, { kind: 'handle', handle }, signal);
+  checkLoad(signal);
   remember(handle);
   return true;
 }
@@ -123,7 +128,7 @@ async function readHandle(handle, { prompt }) {
 function offerAgain(handle) {
   $('again').textContent = `Open ${handle.name} again`;
   $('again-wrap').hidden = false;
-  $('again').onclick = () => loading(() => readHandle(handle, { prompt: true }));
+  $('again').onclick = () => loading(signal => readHandle(handle, { prompt: true, signal }));
 }
 
 /* ------------------------------------------------------------------ *
@@ -131,32 +136,7 @@ function offerAgain(handle) {
  * ------------------------------------------------------------------ */
 
 const native = typeof window.external === 'object' && typeof window.external.receiveMessage === 'function';
-let nativeWaiting = null;
-
-function askNative(cmd, path) {
-  return new Promise((resolve, reject) => {
-    nativeWaiting = { resolve, reject };
-    window.external.sendMessage(JSON.stringify({ cmd, path }));
-  });
-}
-
-function wireNative() {
-  window.external.receiveMessage(raw => {
-    if (!nativeWaiting) return;
-    const pending = nativeWaiting;
-    nativeWaiting = null;
-    try {
-      const msg = JSON.parse(raw);
-      msg.ok || msg.cancelled
-        ? pending.resolve(msg)
-        : pending.reject(Tracker.saveError(
-          msg.error || 'The app could not read that save.',
-          msg.hint || 'Use “choose a file” to point at it yourself.'));
-    } catch (e) {
-      pending.reject(e);
-    }
-  });
-}
+const askNative = native ? createNativeBridge(window.external) : null;
 
 function base64ToBuffer(b64) {
   const binary = atob(b64);
@@ -166,30 +146,33 @@ function base64ToBuffer(b64) {
 }
 
 /** The shell replies with the save in base64 and the path it came from. */
-const applyNative = msg => applySave(base64ToBuffer(msg.data), msg.path);
+const applyNative = (msg, nextSource, signal) => {
+  checkLoad(signal);
+  return applySave(base64ToBuffer(msg.data), msg.path, nextSource, signal);
+};
 
 function loadFromNative() {
-  return loading(async () => {
+  return loading(async signal => {
     const msg = await askNative('find');
-    source = { kind: 'native' };
-    await applyNative(msg);
+    await applyNative(msg, { kind: 'native' }, signal);
   });
 }
 
 /** Re-reads whatever the current save came from. */
 function reload() {
   if (!source) return Promise.resolve();
-  return loading(async () => {
+  const currentSource = source;
+  return loading(async signal => {
     try {
-      if (source.kind === 'native') {
-        await applyNative(await askNative('find'));
-      } else if (source.kind === 'native-file') {
-        await applyNative(await askNative('read', source.path));
-      } else if (source.kind === 'handle') {
-        await applySave(await source.handle.getFile());
+      if (currentSource.kind === 'native') {
+        await applyNative(await askNative('find'), currentSource, signal);
+      } else if (currentSource.kind === 'native-file') {
+        await applyNative(await askNative('read', currentSource.path), currentSource, signal);
+      } else if (currentSource.kind === 'handle') {
+        await applySave(await currentSource.handle.getFile(), undefined, currentSource, signal);
       } else {
         // Re-reading the same File re-reads it from disk, unless it was replaced.
-        await applySave(source.file);
+        await applySave(currentSource.file, undefined, currentSource, signal);
       }
     } catch (e) {
       throw e.name === 'NotReadableError' || e.name === 'NotFoundError'
@@ -209,11 +192,10 @@ async function chooseFile() {
   hideError();
 
   if (native) {
-    const msg = await askNative('open').catch(e => { showError(e); return null; });
-    if (!msg || msg.cancelled) return;
-    return loading(async () => {
-      source = { kind: 'native-file', path: msg.path };
-      await applyNative(msg);
+    return loading(async signal => {
+      const msg = await askNative('open');
+      checkLoad(signal);
+      if (!msg.cancelled) await applyNative(msg, { kind: 'native-file', path: msg.path }, signal);
     });
   }
 
@@ -244,7 +226,7 @@ async function chooseFile() {
     }
     return;
   }
-  return loading(() => readHandle(handle, { prompt: true }));
+  return loading(signal => readHandle(handle, { prompt: true, signal }));
 }
 
 /* ------------------------------------------------------------------ *
@@ -270,7 +252,9 @@ function ensurePictures() {
     pictures = { ...index, data };
     listKey = '';
     redraw();
-  }).catch(() => { /* the app works without them */ });
+    if ($('marking').open) renderPicks();
+  }).catch(() => { /* the app works without them */ })
+    .finally(() => { if (!pictures) picturesPending = null; });
   return picturesPending;
 }
 
@@ -391,6 +375,7 @@ function render() {
   $('intro').hidden = true;
   $('results').hidden = false;
   $('refresh').hidden = !source;
+  $('mark').hidden = !state.manual;
   $('back').hidden = true;
 
   $('totals').hidden = state.level === 0;
@@ -639,6 +624,13 @@ function fillDetail(host, clip) {
   if (clip.watched && clip.views > 0) add('Watched', clip.views === 1 ? 'once' : clip.views + ' times');
   host.append(slate);
 
+  if (state.manual) {
+    const toggle = el('button', clip.watched ? 'ghost mark-toggle' : 'ghost primary mark-toggle',
+      clip.watched ? 'Mark as not found' : 'Mark as found');
+    toggle.onclick = () => setFound(clip.id, !clip.watched);
+    host.append(toggle);
+  }
+
   host.append(el('h4', 'eyebrow', 'How to find it'));
   if (showRoute(clip)) {
     const lines = Tracker.routeFor(clip, byClip);
@@ -676,11 +668,14 @@ function fillDetail(host, clip) {
  * Loading
  * ------------------------------------------------------------------ */
 
-async function loadClips() {
+async function loadClips(signal) {
+  checkLoad(signal);
   if (state.data) return state.data;
-  const response = await fetch('clips.json');
+  const response = await fetch('clips.json', { signal });
   if (!response.ok) throw new Error('Could not load the clip list.');
-  state.data = await response.json();
+  const data = await response.json();
+  checkLoad(signal);
+  state.data = data;
   return state.data;
 }
 
@@ -706,19 +701,19 @@ function setBusy(on) {
   $('drop').classList.toggle('is-busy', on);
 }
 
-/** Every path that loads a save goes through here, so one place owns the spinner. */
-async function loading(work) {
-  hideError();
-  setBusy(true);
-  try {
-    // Let the browser paint the spinner before the parse blocks the thread.
-    await new Promise(requestAnimationFrame);
-    await work();
-  } catch (e) {
-    if (e && e.name !== 'AbortError') showError(e);
-  } finally {
-    setBusy(false);
+const runLoad = createLoader(setBusy, showError, () => new Promise(requestAnimationFrame));
+const runProgressImport = createLoader(() => {}, () => {
+  if (state.manual && $('marking').open) {
+    $('code-note').textContent = 'Could not read that progress file. Try opening it again or paste its code.';
   }
+});
+let loadRequested = false;
+
+function loading(work) {
+  runProgressImport.cancel();
+  loadRequested = true;
+  hideError();
+  return runLoad(work);
 }
 
 /**
@@ -726,13 +721,15 @@ async function loading(work) {
  * before the rest is read, so picking a video or a photo fails at once instead
  * of pulling hundreds of megabytes into memory first.
  */
-async function applySave(input, name) {
-  const data = await loadClips();
+async function applySave(input, name, nextSource = source, signal) {
+  await loadClips(signal);
 
   let buffer;
   if (input instanceof Blob) {
     name = name || input.name;
+    Tracker.checkSaveSize(input.size, name && basename(name));
     const head = new Uint8Array(await input.slice(0, 17).arrayBuffer());
+    checkLoad(signal);
     if (!Tracker.looksLikeSave(head)) {
       throw Tracker.saveError(
         `“${basename(name)}” is not an IMMORTALITY save.`,
@@ -743,13 +740,25 @@ async function applySave(input, name) {
     buffer = input;
   }
 
-  state.clips = Tracker.buildClips(data, Tracker.readSave(buffer, name && basename(name)));
-  byClip = new Map(state.clips.map(c => [c.id, c]));
+  checkLoad(signal);
+  applyClips(Tracker.readSave(buffer, name && basename(name)));
+  source = nextSource;
+  state.manual = false;
+  $('again-wrap').hidden = true;
+  showLoadedClips();
+}
+
+function applyClips(save) {
+  state.clips = Tracker.buildClips(state.data, save);
+  byClip = new Map(state.clips.map(clip => [clip.id, clip]));
+  listKey = '';
+}
+
+function showLoadedClips() {
   state.selected = null;
   state.revealed.clear();
   state.revealedDetails.clear();
-  listKey = '';
-  $('again-wrap').hidden = true;
+  savePrefs();
   syncControls();
   render();
 }
@@ -757,9 +766,9 @@ async function applySave(input, name) {
 const basename = path => String(path).split(/[\\/]/).pop();
 
 function handleFile(file, handle) {
-  return loading(async () => {
-    source = handle ? { kind: 'handle', handle } : { kind: 'file', file };
-    await applySave(file);
+  return loading(async signal => {
+    await applySave(file, undefined, handle ? { kind: 'handle', handle } : { kind: 'file', file }, signal);
+    checkLoad(signal);
     if (handle) remember(handle);
   });
 }
@@ -770,6 +779,177 @@ function syncControls() {
   for (const button of $('filters').children) {
     button.setAttribute('aria-pressed', button.dataset.filter === state.filter);
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Marking by hand
+ *
+ * With no save to read, on a console for instance, the player marks what they
+ * have found. Every change is kept at once, so nothing needs exporting between
+ * visits; the progress code is for moving the marks to another device.
+ * ------------------------------------------------------------------ */
+
+const MAX_PICKS = 8;
+let marks = new Set();
+let marksKept = true;
+
+function loadMarks() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MARKS_KEY) || '[]');
+    if (!Array.isArray(saved)) throw new Error('Invalid stored marks.');
+    marks = new Set(saved.filter(Number.isInteger));
+  } catch {
+    warnMarksStorage();
+  }
+}
+
+function warnMarksStorage() {
+  if (!marksKept) return;
+  marksKept = false;
+  showError(Tracker.saveError('This browser is not keeping your marks.',
+    'Copy your progress code from Mark found before you close the page.'));
+}
+
+function saveMarks() {
+  try {
+    localStorage.setItem(MARKS_KEY, JSON.stringify([...marks].sort((a, b) => a - b)));
+  } catch {
+    warnMarksStorage();
+  }
+}
+
+function applyMarks() {
+  applyClips(Tracker.markedSave(state.data, marks));
+}
+
+// Another tab or window marked something. Without taking its marks, the next
+// change made here would save over them.
+addEventListener('storage', e => {
+  if ((e.key !== null && e.key !== MARKS_KEY) || !state.manual || !state.data) return;
+  runProgressImport.cancel();
+  loadMarks();
+  applyMarks();
+  redraw();
+  if ($('marking').open) renderMarking();
+});
+
+function startMarking() {
+  return loading(async signal => {
+    await loadClips(signal);
+    checkLoad(signal);
+    loadMarks();
+    applyMarks();
+    state.manual = true;
+    source = null;
+    showLoadedClips();
+  });
+}
+
+/** A clip that leaves the list hands the selection to the one that took its place. */
+function setFound(id, found) {
+  runProgressImport.cancel();
+  const at = visibleClips().findIndex(c => c.id === id);
+  const refocus = !!document.activeElement?.classList.contains('mark-toggle');
+  if (found) marks.add(id); else marks.delete(id);
+  saveMarks();
+  applyMarks();
+  const now = visibleClips();
+  if (state.selected === id && !now.some(c => c.id === id)) {
+    // Inline, opening the next clip on its own would move the page under the finger.
+    state.selected = now.length && !inlineDetail.matches ? now[Math.min(at, now.length - 1)].id : null;
+  }
+  render();
+  if (refocus) document.querySelector('.detail .mark-toggle')?.focus();
+  if ($('marking').open) renderMarking();
+}
+
+function renderMarking() {
+  renderPicks();
+  $('code-out').value = Tracker.encodeMarks(marks, state.data.clips.length);
+}
+
+function renderPicks() {
+  const query = $('find').value;
+  const hits = Tracker.findClips(inScope(), query);
+  const shown = hits.slice(0, MAX_PICKS);
+  const named = new Map();
+  for (const { clip } of shown) named.set(clip.title + clip.date, (named.get(clip.title + clip.date) || 0) + 1);
+
+  const list = $('picks');
+  const focusAt = [...list.children].findIndex(li => li.contains(document.activeElement));
+  list.replaceChildren();
+  const looks = new Set();
+  let lookalikes = false;
+  for (const { clip, byLine } of shown) {
+    const pick = el('button');
+    pick.type = 'button';
+    pick.setAttribute('aria-pressed', clip.watched);
+    // Secrets never appear on the game's grid, so a picture may be all there is to go by.
+    const still = showDetails(clip) && picture(String(clip.id), 'thumb');
+    if (still) {
+      pick.classList.add('with-thumb');
+      pick.append(still);
+    }
+    pick.append(el('span', 'name', clip.date ? `${clip.title}  \u00b7  ${clip.date}` : clip.title));
+    // What is said in a clip is part of what is in it. It is shown once the clip is
+    // found or names are on, and to tell ordinary clips with the same label apart;
+    // otherwise a match on it echoes only the words that were typed.
+    const shared = named.get(clip.title + clip.date) > 1 && !clip.secret;
+    if (clip.line && (clip.watched || showNames() || shared)) {
+      pick.append(el('span', 'said', `\u201C${clip.line}\u201D`));
+    } else if (byLine) {
+      pick.append(el('span', 'said', `says \u201C\u2026${query.trim()}\u2026\u201D`));
+    }
+    const tags = el('span', 'tags');
+    if (clip.secret && (showNames() || clip.watched)) tags.append(el('span', 'tag secret', 'Secret'));
+    tags.append(el('span', clip.watched ? 'tag found' : 'tag', clip.watched ? 'Found' : 'Missing'));
+    pick.append(tags);
+    const look = still ? '' : pick.textContent;
+    if (look && looks.has(look)) lookalikes = true;
+    looks.add(look);
+    pick.onclick = () => setFound(clip.id, !clip.watched);
+    const li = el('li');
+    li.append(pick);
+    list.append(li);
+  }
+  if (focusAt >= 0 && list.children.length) {
+    list.children[Math.min(focusAt, list.children.length - 1)].firstElementChild.focus();
+  }
+
+  $('picks-note').textContent = !query.trim() ? ''
+    : !hits.length ? 'Nothing matches. Check the film, take and date, or try other words from the clip.'
+      + (state.secrets ? '' : ' Secret clips are only searched with Secrets on.')
+      : [
+        hits.length > MAX_PICKS ? `${hits.length - MAX_PICKS} more match. Add the take or the date to narrow it down.` : '',
+        lookalikes && !showNames() ? 'Some of these look the same here. With Show me at Clip details, each one shows its picture.' : '',
+      ].filter(Boolean).join(' ');
+}
+
+function loadCode(text) {
+  runProgressImport.cancel();
+  if (!state.manual || !state.data) return;
+  const found = Tracker.decodeMarks(text, state.data.clips.length);
+  if (!found) {
+    $('code-note').textContent = 'That progress code is incomplete, damaged or for a different clip list. Paste the complete ICT1- code.';
+    return;
+  }
+  const before = marks.size ? Tracker.encodeMarks(marks, state.data.clips.length) : '';
+  marks = found;
+  saveMarks();
+  applyMarks();
+  render();
+  renderMarking();
+  $('code-in').value = '';
+  $('code-note').textContent = `Loaded ${marks.size} found ${marks.size === 1 ? 'clip' : 'clips'}.`
+    + (before ? ` The marks it replaced were ${before}` : '');
+}
+
+function importProgressFile(file) {
+  return runProgressImport(async signal => {
+    const text = await file.slice(0, 4096).text();
+    checkLoad(signal);
+    if (state.manual && $('marking').open) loadCode(text);
+  });
 }
 
 /* ------------------------------------------------------------------ *
@@ -800,8 +980,44 @@ $('file').addEventListener('change', e => {
 });
 
 $('choose').addEventListener('click', chooseFile);
+$('by-hand').addEventListener('click', startMarking);
 
 $('refresh').addEventListener('click', reload);
+
+$('mark').addEventListener('click', () => {
+  $('code-note').textContent = '';
+  renderMarking();
+  $('marking').showModal();
+  $('find').focus();
+});
+$('find').addEventListener('input', renderPicks);
+$('code-copy').addEventListener('click', async () => {
+  const out = $('code-out');
+  try {
+    await navigator.clipboard.writeText(out.value);
+    $('code-note').textContent = 'Copied.';
+  } catch {
+    out.select();
+    $('code-note').textContent = 'Selected. Copy it with Ctrl+C, or Cmd+C on a Mac.';
+  }
+});
+$('code-save').addEventListener('click', () => {
+  const text = `IMMORTALITY Clip Tracker progress, ${new Date().toISOString().slice(0, 10)}\n${$('code-out').value}\n`;
+  const link = el('a');
+  link.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+  link.download = 'immortality-progress.txt';
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+});
+$('code-load').addEventListener('click', () => loadCode($('code-in').value));
+$('code-in').addEventListener('keydown', e => { if (e.key === 'Enter') loadCode(e.target.value); });
+$('code-open').addEventListener('click', () => $('code-file').click());
+$('code-file').addEventListener('change', e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (file) importProgressFile(file);
+});
+$('marking').addEventListener('close', () => runProgressImport.cancel());
 
 /**
  * Levels below DETAILS say how many clips are left and nothing more. From there
@@ -863,7 +1079,7 @@ document.addEventListener('keydown', e => {
   if ($('browser').hidden || e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
   // Leave the caret alone when the user is typing or using the select.
-  if (e.target.closest('input, select, textarea')) return;
+  if (e.target.closest('input, select, textarea, dialog')) return;
   const clips = visibleClips();
   if (!clips.length) return;
   e.preventDefault();
@@ -918,6 +1134,7 @@ function wireDialog(id) {
   const dialog = $(id);
   dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());
   dialog.addEventListener('click', e => {
+    if (e.target !== dialog || e.detail === 0) return;
     const box = dialog.getBoundingClientRect();
     const inside = e.clientX >= box.left && e.clientX <= box.right
       && e.clientY >= box.top && e.clientY <= box.bottom;
@@ -936,6 +1153,7 @@ wireDialog('about');
 wireDialog('get');
 wireDialog('warn');
 wireDialog('zoom');
+wireDialog('marking');
 $('about-open').addEventListener('click', () => $('about').showModal());
 $('install').addEventListener('click', () => $('get').showModal());
 
@@ -950,18 +1168,31 @@ if (native) {
   // The desktop build is already installed; there is nothing to offer.
   $('install').hidden = true;
   $('desktop-offer').hidden = true;
-  wireNative();
+  // Webviews do not all hand downloads and file inputs back to the page.
+  $('code-save').hidden = true;
+  $('code-open').hidden = true;
   // Whatever the outcome, the boot state has served its purpose.
-  loadFromNative().finally(() => document.documentElement.classList.remove('booting'));
+  (state.manual ? startMarking() : loadFromNative())
+    .finally(() => document.documentElement.classList.remove('booting', 'by-hand'));
 } else {
+  if (state.manual) {
+    startMarking().finally(() => document.documentElement.classList.remove('booting', 'by-hand'));
+  }
   if (canPickFile) {
     loadHandle()
       .then(async handle => {
         if (!handle) return;
         rememberedHandle = handle;
+        // A requested load takes precedence over the remembered save.
+        if (loadRequested) {
+          offerAgain(handle);
+          return;
+        }
         // Granted: open straight away. Otherwise offer it, since only a click
         // can restore permission after the browser has been closed.
-        if (!await readHandle(handle, { prompt: false })) offerAgain(handle);
+        await loading(async signal => {
+          if (!await readHandle(handle, { prompt: false, signal })) offerAgain(handle);
+        });
       })
       .catch(() => { /* fall back to the drop zone */ });
   }

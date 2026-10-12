@@ -54,9 +54,9 @@ class Nrbf {
     let budget = 4_000_000;
     while (this.pos < this.bytes.length) {
       if (budget-- <= 0) throw new Error(CORRUPT);
-      if (this.record().kind === 'end') break;
+      if (this.record().kind === 'end') return this.objects.get(this.rootId);
     }
-    return this.objects.get(this.rootId);
+    throw new Error(CORRUPT);
   }
 
   deref(value) {
@@ -261,8 +261,16 @@ function saveError(message, hint) {
   return error;
 }
 
+function checkSaveSize(size, name) {
+  if (size <= 32 * 1024 * 1024) return;
+  const file = name ? `\u201C${name}\u201D` : 'That file';
+  throw saveError(`${file} is too big to be a save.`,
+    'Look for SaveGame.abr. SaveThumbnail.abr holds preview images, not your progress.');
+}
+
 /** Returns { watched: Map<id,{views,secret}>, hosts: Map<id,hostId>, themes: [a,b,c] }. */
 function readSave(buffer, name) {
+  checkSaveSize(buffer.byteLength, name);
   const file = name ? `“${name}”` : 'That file';
   const bytes = new Uint8Array(buffer);
 
@@ -386,6 +394,104 @@ function endingProgress(need, save) {
   };
 }
 
+/* ------------------------------------------------------------------ *
+ * Marking by hand
+ *
+ * For anyone with no save file to read, on a console for instance. The marks
+ * stand in for the save's view history, and since the first view of a clip
+ * adds its theme to the three hidden scores, its rounded weights estimate them.
+ * ------------------------------------------------------------------ */
+
+function markedSave(data, found) {
+  const watched = new Map();
+  const themes = [0, 0, 0];
+  for (const row of data.clips) {
+    if (!found.has(row.id)) continue;
+    watched.set(row.id, { views: 0, secret: row.kind === 'Secret' });
+    row.theme.forEach((amount, i) => { themes[i] += amount; });
+  }
+  return { watched, hosts: new Map(), themes };
+}
+
+// A progress code: one bit per clip and a check byte, short enough to paste anywhere.
+const CODE = 'ICT1-';
+const check = bytes => bytes.reduce((sum, byte, i) => (sum * 31 + byte + i) & 255, 7);
+const encodeBytes = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+function encodeMarks(found, count) {
+  const bytes = new Uint8Array(Math.ceil(count / 8) + 1);
+  for (const id of found) {
+    if (Number.isInteger(id) && id >= 1 && id <= count) bytes[(id - 1) >> 3] |= 1 << ((id - 1) & 7);
+  }
+  bytes[bytes.length - 1] = check(bytes.subarray(0, -1));
+  return CODE + encodeBytes(bytes);
+}
+
+/** The marks in a code, wherever it sits in the text, or null if it is not one or was mistyped. */
+function decodeMarks(text, count) {
+  const match = /ICT1-([A-Za-z0-9_-]+)/.exec(String(text));
+  if (!match) return null;
+  if (count !== undefined && (!Number.isInteger(count) || count < 1
+    || match[1].length !== Math.ceil((Math.ceil(count / 8) + 1) * 4 / 3))) return null;
+  let bytes;
+  try {
+    bytes = Uint8Array.from(atob(match[1].replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+    if (encodeBytes(bytes) !== match[1]) return null;
+  } catch {
+    return null;
+  }
+  if (bytes.length < 2 || bytes[bytes.length - 1] !== check(bytes.subarray(0, -1))) return null;
+  const found = new Set();
+  for (let bit = 0; bit < (bytes.length - 1) * 8; bit++) {
+    if (bytes[bit >> 3] & (1 << (bit & 7))) {
+      if (count !== undefined && bit >= count) return null;
+      found.add(bit + 1);
+    }
+  }
+  return found;
+}
+
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july',
+  'august', 'september', 'october', 'november', 'december'];
+
+const plain = text => String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().replace(/['\u2019]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+/** Whether one typed word names something the game shows under this clip, or its number. */
+function namesClip(word, clip) {
+  // "Other" is the app's word; the game writes no film under those clips.
+  if (/[a-z]/.test(word) && clip.movie !== 'Other' && clip.movie.toLowerCase().startsWith(word)) return true;
+  if (clip.take && word === clip.take.toLowerCase()) return true;
+  if (!/^\d+$/.test(word)) {
+    const month = clip.date && Number(clip.date.split('/')[1]);
+    return word.length >= 3 && !!month && MONTHS[month - 1].startsWith(word);
+  }
+  const n = Number(word);
+  if (n === clip.id) return true;
+  if (!clip.date) return false;
+  // Day and month in either order, as the game's two date formats show them.
+  const [day, month, year] = clip.date.split('/').map(Number);
+  return n === day || n === month || n === year || (word.length === 2 && n === year % 100);
+}
+
+/**
+ * The clips a search names, best first: those where every word matches what
+ * the game writes under the clip (film, take, date) or its number, then those
+ * whose first line contains what was typed. `byLine` says which it was.
+ */
+function findClips(clips, query) {
+  const typed = plain(query);
+  // The store page names the film the game writes as 2OE; lines keep the words.
+  const words = typed.replace(/\btwo of everything\b/g, '2oe').split(' ').filter(Boolean);
+  if (!words.length) return [];
+  const named = [], said = [];
+  for (const clip of clips) {
+    if (words.every(word => namesClip(word, clip))) named.push({ clip, byLine: false });
+    else if (typed.length >= 3 && plain(clip.line).includes(typed)) said.push({ clip, byLine: true });
+  }
+  return named.concat(said);
+}
+
 /** Seconds into a clip, written the way a player reads a scrubber. */
 const clock = seconds => {
   const whole = Math.max(0, Math.round(seconds));
@@ -478,5 +584,8 @@ function routeFor(clip, byId) {
   return steps;
 }
 
-return { looksLikeSave, saveError, readSave, buildClips, routeFor };
+return {
+  looksLikeSave, saveError, checkSaveSize, readSave, buildClips, routeFor,
+  markedSave, encodeMarks, decodeMarks, findClips,
+};
 })();

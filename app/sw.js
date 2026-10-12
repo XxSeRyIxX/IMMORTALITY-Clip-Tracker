@@ -3,7 +3,7 @@
 // There is no build step to hash filenames, so a cache-first worker would pin
 // visitors to whatever was cached on their first visit and no deploy would ever
 // reach them. Going to the network first keeps the app current; the cache only
-// takes over when the network does not answer, which is what makes it work
+// takes over when the network fails, which is what makes it work
 // offline.
 const CACHE = 'ict';
 const SHELL = [
@@ -11,6 +11,8 @@ const SHELL = [
   'index.html',
   'style.css',
   'core.js',
+  'loading.js',
+  'native.js',
   'app.js',
   'icon.png',
   'manifest.webmanifest',
@@ -28,11 +30,7 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
+  event.waitUntil(self.clients.claim());
 });
 
 self.addEventListener('fetch', event => {
@@ -41,11 +39,12 @@ self.addEventListener('fetch', event => {
 
   event.respondWith(
     fetch(request)
-      .then(response => {
-        if (response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE).then(cache => cache.put(request, copy));
-        }
+      .then(async response => {
+        if (!response.ok) return await caches.match(request) || response;
+        const copy = response.clone();
+        event.waitUntil(caches.open(CACHE)
+          .then(cache => cache.put(request, copy))
+          .catch(() => {}));
         return response;
       })
       .catch(() => caches.match(request).then(hit =>

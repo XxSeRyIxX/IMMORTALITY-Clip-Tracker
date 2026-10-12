@@ -44,11 +44,11 @@ internal static class SaveLocator
         return null;
     }
 
-    private static IEnumerable<string> SafeEnumerate(string root)
+    internal static IEnumerable<string> SafeEnumerate(string root)
     {
         try
         {
-            return Directory.EnumerateFiles(root, SaveName, new EnumerationOptions
+            return Directory.GetFiles(root, SaveName, new EnumerationOptions
             {
                 RecurseSubdirectories = true,
                 IgnoreInaccessible = true,

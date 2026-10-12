@@ -2,4 +2,7 @@
   <Folder Name="/shell/">
     <Project Path="shell/ImmortalityClipTracker.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/shell/ShellChecks.csproj" />
+  </Folder>
 </Solution>

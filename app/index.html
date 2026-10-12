@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IMMORTALITY Clip Tracker</title>
-<meta name="description" content="Reads your IMMORTALITY save and shows which clips you have not watched yet. Spoiler-free by default. Nothing is uploaded.">
+<meta name="description" content="Shows which IMMORTALITY clips you have not watched yet, read from your save or marked by hand on a console. Spoiler-free by default. Nothing is uploaded.">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0a0908">
 <link rel="icon" href="icon.png">
@@ -12,14 +12,20 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="style.css">
 <meta property="og:title" content="IMMORTALITY Clip Tracker">
-<meta property="og:description" content="Which clips have you missed? Drop your save in and find out. Spoiler-free by default, and nothing leaves your browser.">
+<meta property="og:description" content="Which clips have you missed? Drop your save in, or mark them by hand on a console. Spoiler-free by default, and nothing leaves your browser.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="icon.png">
 </head>
 <body>
 <script>
-  // Runs before the first paint. The desktop build opens a save by itself, so
-  // without this the drop zone appears for a moment and is then replaced.
+  // Runs before the first paint. The desktop build opens a save by itself, and a
+  // player marking by hand goes straight to their marks, so without this the drop
+  // zone appears for a moment and is then replaced.
+  try {
+    if (JSON.parse(localStorage.getItem('ict.prefs') || '{}').manual) {
+      document.documentElement.classList.add('booting', 'by-hand');
+    }
+  } catch { /* storage unavailable: the drop zone shows as usual */ }
   if (typeof window.external === 'object' && typeof window.external.receiveMessage === 'function') {
     document.documentElement.classList.add('booting');
   }
@@ -50,6 +56,7 @@
         <option value="4">Everything</option>
       </select>
     </label>
+    <button id="mark" class="ghost primary" hidden>Mark found</button>
     <button id="reset" class="ghost">Open save</button>
     <button id="refresh" class="ghost" hidden>Reload</button>
   </div>
@@ -74,7 +81,8 @@
 
 <main>
 
-  <p id="boot" class="busy"><span class="spinner"></span> Looking for your save&hellip;</p>
+  <p id="boot" class="busy"><span class="spinner"></span>
+    <span class="for-save">Looking for your save&hellip;</span><span class="for-marks">Opening your marks&hellip;</span></p>
 
   <!-- drop zone -->
   <section id="intro">
@@ -82,6 +90,8 @@
       <p class="big">Drop your save here</p>
       <p class="muted">or <button type="button" id="choose" class="link">choose a file</button><input id="file" type="file" accept=".abr" hidden></p>
       <p class="eyebrow mt">SaveGame.abr &middot; read on your own machine &middot; never uploaded</p>
+      <p class="muted mt">No save file, on a console for example?
+        <button type="button" id="by-hand" class="link">Mark clips by hand</button></p>
       <p class="mt" id="again-wrap" hidden>
         <button id="again" class="ghost primary"></button>
       </p>
@@ -111,7 +121,7 @@
         <div id="desktop-offer">
           <h2 class="eyebrow mt">Prefer a desktop app?</h2>
           <p>Same tracker, installable, and it finds the save on its own.</p>
-          <p><a href="https://github.com/VSeryi/IMMORTALITY-Clip-Tracker/releases" target="_blank" rel="noopener">Download for Windows, macOS or Linux</a></p>
+          <p><a href="https://github.com/XxSeRyIxX/IMMORTALITY-Clip-Tracker/releases" target="_blank" rel="noopener">Download for Windows, macOS or Linux</a></p>
         </div>
       </div>
     </div>
@@ -178,10 +188,11 @@
   </div>
 
   <div class="sheet-body">
-    <p>IMMORTALITY never tells you which clips you have already seen. There is no list,
-       no counter, and no way to know what is left.</p>
-    <p>This works it out from your own save file. The file is read on your own
-       machine. It is never uploaded, and no part of it is sent anywhere.</p>
+     <p>Working out which clips are still missing can become guesswork in the last
+       stretch of a completionist run.</p>
+    <p>This works it out from your own save file, or from the clips you mark by hand
+       when there is no save to read, on a console for instance. Either way it stays on
+       your own machine. Nothing is uploaded, and no part of it is sent anywhere.</p>
     <p>It exists because other people solved the hard parts first and published what
        they found.</p>
 
@@ -215,9 +226,9 @@
     <p>The pictures are frames from IMMORTALITY, &copy; Half Mermaid Productions, shown
        here only so you can tell one clip from another and see where to click. They are
        not covered by that licence, and will be removed on request. The film contains
-       nudity and violence; the frames are taken from it, and are only shown once you
-       have opened the tracker up past <b>Clip numbers</b>.</p>
-    <p><a href="https://github.com/VSeryi/IMMORTALITY-Clip-Tracker" target="_blank" rel="noopener">Source code on GitHub</a></p>
+      nudity and violence; the frames are taken from it, and are shown when you
+      choose a detail level or reveal an individual clip.</p>
+    <p><a href="https://github.com/XxSeRyIxX/IMMORTALITY-Clip-Tracker" target="_blank" rel="noopener">Source code on GitHub</a></p>
   </div>
 </dialog>
 
@@ -233,8 +244,8 @@
   <div class="sheet-body">
     <div class="credit">
       <b>Install this page</b>
-      <p>Adds it to your desktop or home screen and keeps working offline. Nothing to
-         download, and it updates itself.</p>
+      <p>Keeps this page on your desktop or home screen, works offline after an online
+        visit, and checks for updates when opened online.</p>
       <p><button id="install-now" class="ghost primary">Install</button></p>
       <p class="dim" id="install-note">Your browser decides when to offer this. If the
          button does nothing, use your browser menu. In Chrome and Edge it is
@@ -245,7 +256,7 @@
       <b>Download the desktop app</b>
       <p>Finds your save on its own, with no folder prompts. Windows, macOS and Linux,
          one self-contained file.</p>
-      <p><a class="ghost" href="https://github.com/VSeryi/IMMORTALITY-Clip-Tracker/releases" target="_blank" rel="noopener">Open the releases page</a></p>
+      <p><a class="ghost" href="https://github.com/XxSeRyIxX/IMMORTALITY-Clip-Tracker/releases" target="_blank" rel="noopener">Open the releases page</a></p>
     </div>
   </div>
 </dialog>
@@ -282,6 +293,52 @@
   </div>
 </dialog>
 
+<dialog id="marking" class="sheet">
+  <div class="sheet-head">
+    <div>
+      <h2>Mark what you have found</h2>
+      <p class="eyebrow">kept on this device as you go</p>
+    </div>
+    <button class="icon" data-close aria-label="Close">&#10005;</button>
+  </div>
+
+  <div class="sheet-body">
+    <label class="search">
+      <span class="eyebrow">Find a clip</span>
+      <input id="find" type="search" autocomplete="off" spellcheck="false"
+             placeholder="MINSKY 4B, 27/07/1970, or words from the clip">
+    </label>
+    <p class="dim">Type what the game shows under the clip: the film, the take and the date.
+       Clips that share all three can be told apart by a few words of the first thing said.
+       Only clips that match are shown.</p>
+    <ul id="picks" class="picks"></ul>
+    <p id="picks-note" class="dim" aria-live="polite"></p>
+
+    <h3 class="eyebrow section">Move or back up</h3>
+    <div class="credit">
+      <b>Your progress code</b>
+      <p>Every clip marked here, in one line. Paste it on another device, or keep
+         it somewhere safe.</p>
+      <div class="code">
+        <input id="code-out" readonly aria-label="Your progress code">
+        <button id="code-copy" class="ghost">Copy</button>
+        <button id="code-save" class="ghost">Save as file</button>
+      </div>
+    </div>
+    <div class="credit">
+      <b>Load a code</b>
+      <p>Replaces the marks here with the ones in the code.</p>
+      <div class="code">
+        <input id="code-in" spellcheck="false" autocomplete="off" placeholder="ICT1-&hellip;" aria-label="Progress code to load">
+        <button id="code-load" class="ghost">Load</button>
+        <button id="code-open" class="ghost">Open a file</button>
+        <input id="code-file" type="file" accept=".txt,text/plain" hidden>
+      </div>
+    </div>
+    <p id="code-note" class="dim" aria-live="polite"></p>
+  </div>
+</dialog>
+
 <dialog id="zoom" class="zoom">
   <button class="ghost zoom-close" data-close aria-label="Close">&#x2715;</button>
   <figure>
@@ -291,6 +348,8 @@
 </dialog>
 
 <script src="core.js"></script>
+<script src="loading.js"></script>
+<script src="native.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

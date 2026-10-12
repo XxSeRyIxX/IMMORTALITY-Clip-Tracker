@@ -26,7 +26,11 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+
   build:
+    needs: checks
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -163,5 +167,6 @@ jobs:
               or `-macos-x64.dmg` (Intel); open it and drag the app to Applications
             - **Linux**: `ImmortalityClipTracker-linux-x64`, then `chmod +x`
 
-            > macOS and Linux builds are unsigned. On macOS, right-click the app
-            > and choose Open the first time.
+            > Desktop builds are unsigned. Only override a publisher warning for
+            > a download you trust. On macOS, after trying to open the app, use
+            > System Settings > Privacy & Security > Open Anyway.

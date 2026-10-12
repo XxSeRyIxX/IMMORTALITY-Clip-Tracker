@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using System.Text.Json;
 using Photino.NET;
 
@@ -8,8 +9,25 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
-        using SiteServer site = new();
+        using Mutex instance = new(false, "ImmortalityClipTracker");
+        try
+        {
+            if (!instance.WaitOne(0)) return;
+        }
+        catch (AbandonedMutexException) { }
 
+        try
+        {
+            RunWindow(args);
+        }
+        finally
+        {
+            instance.ReleaseMutex();
+        }
+    }
+
+    private static void RunWindow(string[] args)
+    {
         PhotinoWindow window = new PhotinoWindow()
             .SetTitle("IMMORTALITY Clip Tracker")
             .SetUseOsDefaultSize(false)
@@ -21,9 +39,31 @@ internal static class Program
             .SetContextMenuEnabled(false)
             .SetDevToolsEnabled(args.Contains("--dev"));
 
-        window.RegisterWebMessageReceivedHandler(OnMessage);
-        window.Load(new Uri($"http://127.0.0.1:{site.Port}/index.html"));
-        window.WaitForClose();
+        try
+        {
+            using SiteServer site = new();
+            window.RegisterWebMessageReceivedHandler(OnMessage);
+            window.Load(new Uri($"http://127.0.0.1:{site.Port}/index.html"));
+            window.WaitForClose();
+        }
+        catch (SocketException)
+        {
+            window.LoadRawString($"""
+                <!doctype html>
+                <html lang="en">
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>IMMORTALITY Clip Tracker</title>
+                <body style="font:16px/1.5 system-ui;max-width:42rem;margin:2rem auto;padding:0 1.5rem;color:#ddd;background:#0a0908">
+                <h1 style="font-size:1.5rem">IMMORTALITY Clip Tracker</h1>
+                <p>Local port {SiteServer.StablePort} is unavailable.</p>
+                <p>Close other copies of the tracker or free this port, then reopen the app.
+                Your saved marks have not been changed.</p>
+                </body>
+                </html>
+                """);
+            window.WaitForClose();
+        }
     }
 
     // A real save is tens of kilobytes. SaveThumbnail.abr in the same folder tree

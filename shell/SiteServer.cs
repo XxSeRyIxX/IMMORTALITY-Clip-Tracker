@@ -30,11 +30,28 @@ internal sealed class SiteServer : IDisposable
             .Where(n => n.StartsWith(Prefix, StringComparison.Ordinal))
             .Select(n => n[Prefix.Length..].Replace('\\', '/'))];
 
-        // Port 0 lets the OS pick a free one; loopback only, never the network.
-        _listener = new TcpListener(IPAddress.Loopback, 0);
-        _listener.Start();
+        // Loopback only, never the network. The page keeps its settings and marks per
+        // origin, so changing the port would hide them.
+        _listener = Listen(StablePort);
         Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         _ = Task.Run(AcceptLoop);
+    }
+
+    internal const int StablePort = 48288;
+
+    private static TcpListener Listen(int port)
+    {
+        TcpListener listener = new(IPAddress.Loopback, port);
+        try
+        {
+            listener.Start();
+            return listener;
+        }
+        catch (SocketException)
+        {
+            listener.Stop();
+            throw;
+        }
     }
 
     private async Task AcceptLoop()
@@ -84,18 +101,22 @@ internal sealed class SiteServer : IDisposable
         catch (SocketException) { /* the webview hung up */ }
     }
 
-    private static async Task<string?> ReadRequestTarget(NetworkStream stream)
+    internal static async Task<string?> ReadRequestTarget(Stream stream)
     {
         byte[] buffer = new byte[8192];
-        int read = await stream.ReadAsync(buffer);
-        if (read <= 0) return null;
+        int received = 0;
+        while (received < buffer.Length)
+        {
+            int read = await stream.ReadAsync(buffer.AsMemory(received));
+            if (read == 0) return null;
+            received += read;
+            if (buffer.AsSpan(0, received).IndexOf("\r\n\r\n"u8) < 0) continue;
 
-        string head = Encoding.ASCII.GetString(buffer, 0, read);
-        int eol = head.IndexOf('\r');
-        if (eol < 0) return null;
-
-        string[] parts = head[..eol].Split(' ');
-        return parts.Length >= 2 && parts[0] == "GET" ? parts[1] : null;
+            int eol = Array.IndexOf(buffer, (byte)'\r', 0, received);
+            string[] parts = Encoding.ASCII.GetString(buffer, 0, eol).Split(' ');
+            return parts.Length >= 2 && parts[0] == "GET" ? parts[1] : null;
+        }
+        return null;
     }
 
     private static async Task Write(NetworkStream stream, string status, string type, byte[] body)
