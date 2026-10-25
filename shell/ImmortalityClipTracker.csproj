@@ -33,7 +33,8 @@
   <!-- The web app is the product; it travels inside the executable. RecursiveDir
        keeps subfolders from collapsing onto the files beside them. -->
   <ItemGroup>
-    <EmbeddedResource Include="..\app\**\*"
+    <!-- social.png is only the website's link preview. -->
+    <EmbeddedResource Include="..\app\**\*" Exclude="..\app\social.png"
                       LogicalName="site.%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 

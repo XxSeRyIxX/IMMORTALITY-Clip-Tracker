@@ -15,7 +15,7 @@
   color-scheme: dark;
 
   --t-label: .66rem;   /* mono, uppercase, tracked: eyebrows, tags, keys  */
-  --t-xs: .78rem;      /* small print: meta, tallies, help                */
+  --t-xs: .8rem;       /* small print: meta, tallies, help (12px on a phone) */
   --t-sm: .88rem;      /* secondary body: list rows, routes               */
   --t-md: 1rem;        /* body                                           */
   --t-lg: 1.35rem;     /* section and dialog titles                      */
@@ -409,6 +409,20 @@ code {
 .segmented button:hover { background: var(--line-soft); color: var(--ink); }
 .segmented button[aria-pressed="true"] { background: var(--raised); color: var(--accent); border-bottom-color: var(--accent); }
 
+/* The language switch in the header: the same look, two narrow buttons. */
+.lang { display: inline-flex; border: 1px solid var(--edge); }
+.lang button {
+  font: var(--t-label) var(--mono);
+  letter-spacing: .12em;
+  background: var(--base);
+  color: var(--muted);
+  border: 0; border-bottom: 2px solid transparent;
+  padding: .45rem .6rem;
+  cursor: pointer;
+}
+.lang button:hover { background: var(--line-soft); color: var(--ink); }
+.lang button[aria-pressed="true"] { background: var(--raised); color: var(--accent); border-bottom-color: var(--accent); }
+
 #clip-count { margin-bottom: .6rem; }
 
 #clips { list-style: none; margin: 0; padding: 0; }
@@ -729,14 +743,15 @@ dialog p:last-child { margin-bottom: 0; }
      strands About on a line of its own. */
   .bar {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
     gap: .75rem .6rem;
     padding: .9rem var(--gutter);
     position: static;
   }
   .wordmark { grid-area: 1 / 1; margin: 0; }
-  #about-open { grid-area: 1 / 2; }
-  #install { grid-area: 1 / 3; }
+  .lang { grid-area: 1 / 2; }
+  #about-open { grid-area: 1 / 3; }
+  #install { grid-area: 1 / 4; }
   .controls { grid-area: 2 / 1 / 3 / -1; flex-wrap: wrap; gap: .5rem .7rem; }
   /* Stands in for the controls row, which is hidden while it shows. */
   #back { grid-area: 2 / 1 / 3 / -1; justify-self: start; }
@@ -752,6 +767,9 @@ dialog p:last-child { margin-bottom: 0; }
   .controls { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .5rem .7rem; align-items: center; }
   .controls .field { display: contents; }
   .controls .switch { justify-self: start; }
+  /* Beside the name there is room for two buttons only. */
+  .lang { grid-area: 2 / 1 / 3 / -1; justify-self: start; }
+  .controls, #back { grid-row: 3; }
 
   .toast { left: 1.1rem; right: 1.1rem; width: auto; }
 }

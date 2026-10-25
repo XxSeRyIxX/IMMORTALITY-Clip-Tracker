@@ -1,8 +1,9 @@
 'use strict';
 
 /**
- * Save parsing and clip logic. No DOM, no globals beyond `Tracker`, and
- * no ES modules so the same file works over http:// and inside the native shell.
+ * Save parsing and clip logic. No DOM, no globals beyond `Tracker` (its texts come
+ * from `I18n`), and no ES modules so the same file works over http:// and inside
+ * the native shell.
  */
 const Tracker = (() => {
 
@@ -261,39 +262,30 @@ function saveError(message, hint) {
   return error;
 }
 
+/** The error for a file named `name` (or none), worded by the `error.` and `hint.` texts of `key`. */
+const fileError = (key, name, hint = key) =>
+  saveError(I18n.t(`error.${key}`, I18n.fileLabel(name)), I18n.t(`hint.${hint}`));
+
+const notSave = name => fileError('notSave', name);
+
 function checkSaveSize(size, name) {
-  if (size <= 32 * 1024 * 1024) return;
-  const file = name ? `\u201C${name}\u201D` : 'That file';
-  throw saveError(`${file} is too big to be a save.`,
-    'Look for SaveGame.abr. SaveThumbnail.abr holds preview images, not your progress.');
+  if (size > 32 * 1024 * 1024) throw fileError('tooBig', name);
 }
 
 /** Returns { watched: Map<id,{views,secret}>, hosts: Map<id,hostId>, themes: [a,b,c] }. */
 function readSave(buffer, name) {
   checkSaveSize(buffer.byteLength, name);
-  const file = name ? `“${name}”` : 'That file';
   const bytes = new Uint8Array(buffer);
-
-  if (!looksLikeSave(bytes)) {
-    throw saveError(
-      `${file} is not an IMMORTALITY save.`,
-      'The file you want is called SaveGame.abr. The folders it lives in are listed below.');
-  }
+  if (!looksLikeSave(bytes)) throw notSave(name);
 
   const reader = new Nrbf(buffer);
   let root;
   try {
     root = reader.parse();
   } catch {
-    throw saveError(
-      `${file} could not be read.`,
-      'It looks like a save but the contents are damaged. Try the copy in Steam Cloud.');
+    throw fileError('unreadable', name, 'damaged');
   }
-  if (!root || !root.Game) {
-    throw saveError(
-      `${file} is a save, but not from IMMORTALITY.`,
-      'Look for SaveGame.abr in the Immortality folder rather than another game\u2019s.');
-  }
+  if (!root || !root.Game) throw fileError('otherGame', name);
 
   const game = reader.deref(root.Game);
   const history = reader.deref(game.ViewHistory);
@@ -319,11 +311,7 @@ function readSave(buffer, name) {
     if (pair) hosts.set(Number(pair.key), Number(pair.value));
   }
 
-  if (!watched.size) {
-    throw saveError(
-      `${file} has no clips watched yet.`,
-      'Play a little, let the game save, then come back.');
-  }
+  if (!watched.size) throw fileError('empty', name);
   // Three hidden scores every newly watched clip adds to; the ending needs some of each.
   const themes = ['TotalThemeA', 'TotalThemeB', 'TotalThemeC'].map(key => Number(game[key]));
   return { watched, hosts, themes };
@@ -338,21 +326,37 @@ function readSave(buffer, name) {
 
 const label = clip => clip.date ? `${clip.title} (${clip.date})` : clip.title;
 
+/**
+ * The clips in the interface language. clips.json has the game's English in its rows and, beside them, the
+ * game's own words in each other language: films, first lines, and objects by their English names.
+ */
 function buildClips(data, save) {
   // Clips already holding a free-floating secret, which keep it for good.
   const taken = new Set(save.hosts.values());
   const progress = gameProgress(data, save);
+  const words = data[I18n.lang()] ?? {};
+  const others = Object.keys(data).filter(key => key !== 'clips').map(key => data[key]);
+  // "Other" is the app's word for clips outside the three films.
+  const film = movie => (movie === 'Other' ? t('movie.Other') : words.films?.[movie] ?? movie);
   return data.clips.map(row => {
     const seen = save.watched.get(row.id);
+    const line = words.lines?.[row.id] ?? row.line;
     const clip = {
       ...row,
+      line,
+      film: film(row.movie),
       watched: !!seen,
       secret: row.kind === 'Secret',
       views: seen ? seen.views : 0,
       // Plain fields, not getters: these are read once per row on every redraw.
-      title: row.take ? `${row.movie} ${row.take}` : row.movie,
-      subtitle: [row.date, row.line].filter(Boolean).join('  \u00b7  '),
+      // The app builds the clips again when the interface language changes.
+      title: row.take ? `${film(row.movie)} ${row.take}` : film(row.movie),
+      subtitle: [row.date, line].filter(Boolean).join('  \u00b7  '),
+      // What a player may type from the game in any of its languages, whichever the tracker shows.
+      names: [row.movie, ...others.map(other => other.films?.[row.movie])].filter(Boolean),
+      lines: [row.line, ...others.map(other => other.lines?.[row.id])].filter(Boolean),
     };
+    if (row.routes) clip.routes = row.routes.map(route => ({ ...route, object: words.objects?.[route.object] ?? route.object }));
     // A free-floating secret can be in any clip of its pool. The save knows
     // which one it landed in, or else which of them are still free.
     if (row.pool) {
@@ -453,6 +457,8 @@ function decodeMarks(text, count) {
 
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july',
   'august', 'september', 'october', 'november', 'december'];
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+  'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
 const plain = text => String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().replace(/['\u2019]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -460,11 +466,14 @@ const plain = text => String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, 
 /** Whether one typed word names something the game shows under this clip, or its number. */
 function namesClip(word, clip) {
   // "Other" is the app's word; the game writes no film under those clips.
-  if (/[a-z]/.test(word) && clip.movie !== 'Other' && clip.movie.toLowerCase().startsWith(word)) return true;
+  const films = clip.movie === 'Other' ? [] : clip.names ?? [clip.movie];
+  if (/[a-z]/.test(word) && films.some(name => name.toLowerCase().startsWith(word))) return true;
   if (clip.take && word === clip.take.toLowerCase()) return true;
   if (!/^\d+$/.test(word)) {
     const month = clip.date && Number(clip.date.split('/')[1]);
-    return word.length >= 3 && !!month && MONTHS[month - 1].startsWith(word);
+    if (word.length < 3 || !month) return false;
+    // English always, as before; Spanish as well with the Spanish interface.
+    return MONTHS[month - 1].startsWith(word) || (I18n.lang() === 'es' && MESES[month - 1].startsWith(word));
   }
   const n = Number(word);
   if (n === clip.id) return true;
@@ -481,13 +490,13 @@ function namesClip(word, clip) {
  */
 function findClips(clips, query) {
   const typed = plain(query);
-  // The store page names the film the game writes as 2OE; lines keep the words.
-  const words = typed.replace(/\btwo of everything\b/g, '2oe').split(' ').filter(Boolean);
+  // The film the game writes as 2OE, and 2DC in Spanish, is called this in full; lines keep the words.
+  const words = typed.replace(/\btwo of everything\b/g, '2oe').replace(/\bdos de cada\b/g, '2dc').split(' ').filter(Boolean);
   if (!words.length) return [];
   const named = [], said = [];
   for (const clip of clips) {
     if (words.every(word => namesClip(word, clip))) named.push({ clip, byLine: false });
-    else if (typed.length >= 3 && plain(clip.line).includes(typed)) said.push({ clip, byLine: true });
+    else if (typed.length >= 3 && (clip.lines ?? [clip.line]).some(line => plain(line).includes(typed))) said.push({ clip, byLine: true });
   }
   return named.concat(said);
 }
@@ -498,41 +507,31 @@ const clock = seconds => {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 };
 
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-const either = (items, word) => items.length < 2 ? String(items[0])
-  : `${items.slice(0, -1).join(', ')} ${word} ${items[items.length - 1]}`;
-
+const { t, tn } = I18n;
 const step = (text, note = '', pic = '', mark = null) => ({ text, note, pic, mark });
 
 function cutStep(route, byId) {
   const from = byId.get(route.shot);
   const note = [
-    route.at !== undefined ? 'at ' + clock(route.at) : '',
+    route.at !== undefined ? t('route.at', clock(route.at)) : '',
     // Only when no ordinary clip holds the object; the generator avoids it otherwise.
-    from.secret ? 'starts in a secret' : '',
-    route.lands === 1 ? 'always cuts here'
-      : `cuts here or to ${plural(route.lands - 1, 'other clip')}${route.mutual ? ' that have it too' : ''}`,
+    from.secret ? t('route.fromSecret') : '',
+    route.lands === 1 ? t('route.always') : tn(route.mutual ? 'route.orToMutual' : 'route.orTo', route.lands - 1),
     // Already said above when they are the very clips it can cut to.
-    route.also && !route.mutual ? `also in ${plural(route.also, 'other clip')}` : '',
+    route.also && !route.mutual ? tn('route.also', route.also) : '',
   ].filter(Boolean).join('  \u00b7  ');
-  return step(`Match-cut on ${route.object} in ${label(from)}`,
+  return step(t('route.cut', route.object, label(from)),
     note, route.pic || String(route.shot), route.box || null);
 }
 
-// What to press: a secret opens only in its own speed range, and the arrow keys
-// swap direction inside a clip that plays reversed.
-const SPEED = {
-  slow: 'at half speed: hold , (comma)',
-  fast: 'at 1x to 8x: press \u2190 or A',
-  reversed: 'at 1x to 8x: press \u2192 or D, as this clip plays reversed',
-};
-
+// What to press (route.slow, route.fast or route.reversed): a secret opens only in
+// its own speed range, and the arrow keys swap direction inside a clip that plays reversed.
 function rewindStep(way, byId) {
   const host = byId.get(way.from);
   const [from, to] = way.at;
-  const when = to - from < 1 ? `past ${clock(from)}` : `from ${clock(to)} back to ${clock(from)}`;
+  const when = to - from < 1 ? t('route.past', clock(from)) : t('route.between', clock(to), clock(from));
   // A secret's own picture is not shown until the player has found it.
-  return step(`Rewind clip ${host.id}, ${label(host)}, ${when}`, SPEED[way.speed], host.secret ? '' : String(host.id));
+  return step(t('route.rewind', host.id, label(host), when), t(`route.${way.speed}`), host.secret ? '' : String(host.id));
 }
 
 function secretSteps(clip, byId) {
@@ -540,10 +539,9 @@ function secretSteps(clip, byId) {
   if (clip.pool && !clip.placed) {
     const more = ways.length - 3;
     return [
-      step(`It can turn up in ${ways.length > 1 ? `any of ${ways.length} clips` : 'this clip'}`,
-        `opening ${ways.length > 1 ? 'one' : 'it'} can place a secret there for good, by chance. Rewind at the moment shown; if nothing appears, go back to the grid and open it again`),
+      step(ways.length > 1 ? t('route.anyOf', ways.length) : t('route.this'), tn('route.chance', ways.length)),
       ...ways.slice(0, 3).map(way => rewindStep(way, byId)),
-      ...(more > 0 ? [step(`or ${plural(more, 'more clip')} like these`)] : []),
+      ...(more > 0 ? [step(tn('route.more', more))] : []),
     ];
   }
   // A secret inside a secret: walk back to the ordinary clip the chain starts in.
@@ -555,17 +553,15 @@ function secretSteps(clip, byId) {
 }
 
 function endingSteps(e) {
-  const tally = (have, need) => have >= need ? 'done' : `you have ${have}`;
+  const tally = (have, need) => have >= need ? t('route.done') : t('route.have', have);
   return [
-    step(`Watch ${e.watch} different clips`, tally(e.watched, e.watch)),
-    step(`Find ${e.secrets} secrets`, tally(e.secretsSeen, e.secrets)),
-    step(`Watch clips ${either(e.clips, 'and')}`, e.missing.length ? `still to find: ${e.missing.join(', ')}` : 'done'),
-    step('Reach a quarter of each of three hidden scores',
-      e.themesMet === null ? 'every new clip you watch adds to them'
-        : e.themesMet ? 'done' : 'not yet: every new clip you watch adds to them'),
-    step(`Then open one of ${e.key.length} key clips, such as ${either(e.clips, 'or')}, and go back to the grid`,
-      'the ending starts there once all of the above is true'),
-    step('This clip then takes over the grid tile by tile, fills the screen and plays into the credits'),
+    step(t('route.watch', e.watch), tally(e.watched, e.watch)),
+    step(t('route.secrets', e.secrets), tally(e.secretsSeen, e.secrets)),
+    step(t('route.clips', I18n.list(e.clips, 'and')), e.missing.length ? t('route.toFind', e.missing.join(', ')) : t('route.done')),
+    step(t('route.scores'),
+      e.themesMet === null ? t('route.adds') : e.themesMet ? t('route.done') : t('route.notYet')),
+    step(t('route.key', e.key.length, I18n.list(e.clips, 'or')), t('route.starts')),
+    step(t('route.credits')),
   ];
 }
 
@@ -577,15 +573,14 @@ function routeFor(clip, byId) {
   if (clip.ending) return endingSteps(clip.ending);
   const steps = clip.secret ? secretSteps(clip, byId) : clip.routes.map(route => cutStep(route, byId));
   if (clip.heldBack) {
-    steps.push(step(`Only once about ${Math.round(clip.gate)}% of the game is watched`,
-      clip.progress === null ? 'the game holds it back until then'
-        : `you are at about ${Math.floor(clip.progress)}%, and every new clip you watch adds to it`));
+    steps.push(step(t('route.gate', Math.round(clip.gate)),
+      clip.progress === null ? t('route.held') : t('route.progress', Math.floor(clip.progress))));
   }
   return steps;
 }
 
 return {
-  looksLikeSave, saveError, checkSaveSize, readSave, buildClips, routeFor,
+  looksLikeSave, saveError, notSave, checkSaveSize, readSave, buildClips, routeFor,
   markedSave, encodeMarks, decodeMarks, findClips,
 };
 })();

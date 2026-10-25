@@ -6,7 +6,7 @@ function worker({ fetch, cached, put = async () => {} } = {}) {
   const handlers = new Map();
   const writes = [];
   let claims = 0;
-  let deletions = 0;
+  const deleted = [];
   const cache = {
     put: async (...args) => { writes.push(args); await put(...args); },
   };
@@ -21,8 +21,8 @@ function worker({ fetch, cached, put = async () => {} } = {}) {
     caches: {
       open: async () => cache,
       match: async () => cached?.clone(),
-      keys: async () => ['ict', 'another-app'],
-      delete: async () => { deletions++; },
+      keys: async () => ['ict', 'ict-2', 'another-app'],
+      delete: async key => { deleted.push(key); },
     },
   });
   function dispatch(name, request) {
@@ -35,7 +35,7 @@ function worker({ fetch, cached, put = async () => {} } = {}) {
     });
     return { lifetimes, response };
   }
-  return { shell, dispatch, writes, claims: () => claims, deletions: () => deletions };
+  return { shell, dispatch, writes, claims: () => claims, deleted };
 }
 
 test('the offline shell includes every page script', () => {
@@ -45,11 +45,11 @@ test('the offline shell includes every page script', () => {
   }
 });
 
-test('activation claims clients without deleting another app cache', async () => {
+test('activation claims clients and drops only this app\'s old caches', async () => {
   const instance = worker();
   await Promise.all(instance.dispatch('activate').lifetimes);
   assert.equal(instance.claims(), 1);
-  assert.equal(instance.deletions(), 0);
+  assert.deepEqual(instance.deleted, ['ict']);
 });
 
 test('cache writes extend the worker lifetime', async () => {

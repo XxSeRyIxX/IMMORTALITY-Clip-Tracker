@@ -1,4 +1,4 @@
-app/pictures.bin holds frames from IMMORTALITY.
+app/pictures.pack holds frames from IMMORTALITY.
 
     Copyright (c) Half Mermaid Productions. All rights reserved.
 

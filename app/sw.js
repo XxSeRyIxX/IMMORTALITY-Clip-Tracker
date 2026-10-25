@@ -4,12 +4,13 @@
 // visitors to whatever was cached on their first visit and no deploy would ever
 // reach them. Going to the network first keeps the app current; the cache only
 // takes over when the network fails, which is what makes it work
-// offline.
-const CACHE = 'ict';
+// offline. A new name for CACHE drops the old caches, with whatever they held.
+const CACHE = 'ict-2';
 const SHELL = [
   './',
   'index.html',
   'style.css',
+  'i18n.js',
   'core.js',
   'loading.js',
   'native.js',
@@ -30,7 +31,9 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(caches.keys()
+    .then(keys => Promise.all(keys.filter(key => /^ict(-\d+)?$/.test(key) && key !== CACHE).map(key => caches.delete(key))))
+    .then(() => self.clients.claim()));
 });
 
 self.addEventListener('fetch', event => {

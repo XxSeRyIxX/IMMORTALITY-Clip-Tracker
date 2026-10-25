@@ -3,9 +3,10 @@ Builds everything the tracker knows about the game from a local IMMORTALITY
 install, so the app itself only ever reads the results.
 
     app/clips.json     every clip as the game describes it: film, take, date,
-                       its first line, and every way to reach it
-    app/pictures.bin   a still for every clip and a frame for every match-cut
-    app/pictures.json  where each picture sits inside pictures.bin
+                       its first line, and every way to reach it, plus the
+                       game's own Spanish for the films, lines and objects
+    app/pictures.pack  a still for every clip and a frame for every match-cut
+    app/pictures.json  where each picture sits inside pictures.pack
     app/pictures.txt   the licence notice for those pictures
 
 Windows only, because frames are decoded by the game's own Bink runtime.
@@ -44,6 +45,9 @@ CROWDED = 12       # a click that can land on more clips than this is a poor way
 
 FILMS = {1: "Ambrosio", 2: "Minsky", 3: "2OE"}
 NORMAL, SUPERNATURAL, FREE_FLOATING = 0, 1, 3   # VideoType; the game never uses 2
+# The tracker's languages besides English, by the name of the game's string table for each.
+LANGUAGES = {"es": "Spanish (Spain)"}
+ENDING = {"en": "The ending", "es": "El final"}   # nothing is said in it, and the game names it nowhere
 
 
 # ---------------------------------------------------------------------------
@@ -121,12 +125,12 @@ def mask(r):
 
 
 def subtitle(r):
-    """SubtitleData: key, speaker, text, start, end."""
-    r.text()
+    """SubtitleData: key, speaker, text, start, end. The key finds the text in each language's string table."""
+    key = r.text()
     r.text()
     text = r.text()
     r.take("<2f")
-    return text
+    return {"key": key, "text": text}
 
 
 def segment(r):
@@ -209,17 +213,24 @@ def read_game(assets):
 
 
 def read_words(data_dir):
-    """The game's English text, from its string table in resources.assets."""
+    """The game's own text in English and in each of LANGUAGES, from its string tables in resources.assets."""
+    wanted = ["English", *LANGUAGES.values()]
+    tables = {}
     for obj in UnityPy.load(os.path.join(data_dir, "resources.assets")).objects:
         if obj.type.name != "MonoBehaviour":
             continue
         data = bytes(obj.get_raw_data())
-        if data[28:40] == b"\x07\0\0\0English\0":
-            r = Reader(data, 40)
-            words = dict(r.many(lambda r: (r.text(), r.text())))
-            if r.at == len(data) and "S_MovieName_1" in words:
-                return words
-    sys.exit("resources.assets has no English string table; is this IMMORTALITY?")
+        for name in wanted:
+            label = name.encode()
+            if data[28:32 + len(label)] == struct.pack("<i", len(label)) + label:
+                r = Reader(data, 28)
+                r.text()
+                words = dict(r.many(lambda r: (r.text(), r.text())))
+                if r.at == len(data) and "S_MovieName_1" in words:
+                    tables[name] = words
+    if missing := [name for name in wanted if name not in tables]:
+        sys.exit(f"resources.assets has no {' or '.join(missing)} string table; is this IMMORTALITY?")
+    return tables
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +254,38 @@ def spaced(name):
 def spoken(text):
     """Subtitles carry markup for the renderer; a one-line reminder wants none of it."""
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]*>", "", text))).strip()
+
+
+def first_line(v, words):
+    """What is said first in a clip, as the game's subtitles show it in that language."""
+    if not v["lines"]:
+        return ""
+    line = v["lines"][0]
+    return spoken(words.get(line["key"]) or line["text"])
+
+
+def film_name(text):
+    """The game writes films in capitals: AMBROSIO is Ambrosio, but 2OE stays 2OE."""
+    return text if any(c.isdigit() for c in text) else text.title()
+
+
+def translation(videos, routes, words, other, code):
+    """The game's own words in another language for what the app shows: the films where they
+    differ, every first line, and the objects routes click, by their English names."""
+    names = {}
+    for v in videos.values():
+        for m in v["masks"]:
+            if m["word"] in other:
+                names.setdefault(words.get(m["word"]) or spaced(m["name"]), set()).add(other[m["word"]])
+    if clashes := {name: sorted(found) for name, found in names.items() if len(found) > 1}:
+        sys.exit(f"objects with more than one name in {code}: {clashes}")
+    used = sorted({route[0] for offered in routes.values() for route in offered})
+    films = {name: film_name(other[f"S_MovieName_{n}"]) for n, name in FILMS.items()}
+    lines = {str(clip): first_line(videos[clip], other) or (ENDING[code] if clip == ENDING_CLIP else "")
+             for clip in range(1, MAX_CLIP + 1)}
+    return {"films": {name: film for name, film in films.items() if film != name},
+            "lines": {clip: line for clip, line in lines.items() if line},
+            "objects": {name: next(iter(names[name])) for name in used if names.get(name, {name}) != {name}}}
 
 
 # ---------------------------------------------------------------------------
@@ -528,7 +571,7 @@ def make_frames(routes, videos, bink):
 # ---------------------------------------------------------------------------
 
 NOTICE = """\
-app/pictures.bin holds frames from IMMORTALITY.
+app/pictures.pack holds frames from IMMORTALITY.
 
     Copyright (c) Half Mermaid Productions. All rights reserved.
 
@@ -553,9 +596,9 @@ IMMORTALITY: https://store.steampowered.com/app/1350200/IMMORTALITY/
 """
 
 
-def write(clips, entries):
+def write(clips, translations, entries):
     with open(os.path.join(APP, "clips.json"), "w", encoding="utf-8") as fh:
-        json.dump({"clips": clips}, fh, ensure_ascii=False, separators=(",", ":"))
+        json.dump({"clips": clips, **translations}, fh, ensure_ascii=False, separators=(",", ":"))
 
     blob, index = bytearray(), {}
     for key, path in entries:
@@ -563,7 +606,8 @@ def write(clips, entries):
             data = fh.read()
         index[key] = [len(blob), len(data)]
         blob += data
-    with open(os.path.join(APP, "pictures.bin"), "wb") as fh:
+    # Never .bin: download managers (IDM) take those over even when the page only reads them.
+    with open(os.path.join(APP, "pictures.pack"), "wb") as fh:
         fh.write(blob)
     with open(os.path.join(APP, "pictures.json"), "w", encoding="utf-8") as fh:
         json.dump({"box": list(BOX), "at": index}, fh, separators=(",", ":"))
@@ -576,7 +620,10 @@ def main(data_dir):
     print("reading the game...")
     assets = UnityPy.load(os.path.join(data_dir, "sharedassets4.assets"))
     videos, links = read_game(assets)
-    words = read_words(data_dir)
+    tables = read_words(data_dir)
+    words = tables["English"]
+    if [film_name(words[f"S_MovieName_{n}"]) for n in FILMS] != list(FILMS.values()):
+        sys.exit("the game names its films differently now; update FILMS")
     clickable = cuts(videos, links, words)
     # A secret is reached by rewinding, never by a match-cut, so it has no routes.
     routes = {clip: routes_into(clip, clickable, videos)
@@ -594,7 +641,7 @@ def main(data_dir):
     for clip in range(1, MAX_CLIP + 1):
         v = videos[clip]
         row = {"id": clip, **labelled(v), "kind": "Clip" if v["type"] == NORMAL else "Secret",
-               "line": spoken(v["lines"][0]) if v["lines"] else "",
+               "line": first_line(v, words) or (ENDING["en"] if clip == ENDING_CLIP else ""),
                # Lets clips marked by hand give the same scores a save would.
                "theme": [round(t, 4) for t in theme(v)]}
         # Neither a match-cut nor a rewind reaches it before this much of the game is seen.
@@ -624,15 +671,17 @@ def main(data_dir):
             row["pool"] = True
         if clip == ENDING_CLIP:
             row["ending"] = ending(videos)
-            row["line"] = row["line"] or "The ending"     # nothing is said in it, and the game names it nowhere
         clips.append(row)
 
-    size = write(clips, entries)
+    translations = {code: translation(videos, routes, words, tables[name], code) for code, name in LANGUAGES.items()}
+    size = write(clips, translations, entries)
     shown = [r for c in clips for r in c.get("routes", ())]
     print(f"wrote app/clips.json: {MAX_CLIP} clips, {len(shown)} match-cuts, {len(shown) - len(blind)} with a ring,"
           f" {sum(r['lands'] == 1 for r in shown)} that always land, {sum(len(w) for w in ways.values())}"
           f" ways into {len(ways)} secrets")
-    print(f"wrote app/pictures.bin: {len(stills)} stills, {len(packed)} frames, {size / 1024 / 1024:.1f} MB")
+    print(f"wrote app/pictures.pack: {len(stills)} stills, {len(packed)} frames, {size / 1024 / 1024:.1f} MB")
+    for code, words_in in translations.items():
+        print(f"  {code}: {len(words_in['lines'])} lines, {len(words_in['objects'])} objects, films {words_in['films']}")
     for line in blind:
         print(f"  no frame shows the object: {line}")
 

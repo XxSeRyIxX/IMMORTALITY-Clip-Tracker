@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Sockets;
 using System.Text.Json;
 using Photino.NET;
@@ -48,17 +49,24 @@ internal static class Program
         }
         catch (SocketException)
         {
+            // The page, and the language chosen in it, never loaded: the system's language words this.
+            bool spanish = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "es";
+            string unavailable = spanish
+                ? $"El puerto local {SiteServer.StablePort} no está disponible."
+                : $"Local port {SiteServer.StablePort} is unavailable.";
+            string advice = spanish
+                ? "Cierra las otras copias del tracker o libera este puerto, y vuelve a abrir la app. Tus marcas guardadas no han cambiado."
+                : "Close other copies of the tracker or free this port, then reopen the app. Your saved marks have not been changed.";
             window.LoadRawString($"""
                 <!doctype html>
-                <html lang="en">
+                <html lang="{(spanish ? "es" : "en")}">
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <title>IMMORTALITY Clip Tracker</title>
                 <body style="font:16px/1.5 system-ui;max-width:42rem;margin:2rem auto;padding:0 1.5rem;color:#ddd;background:#0a0908">
                 <h1 style="font-size:1.5rem">IMMORTALITY Clip Tracker</h1>
-                <p>Local port {SiteServer.StablePort} is unavailable.</p>
-                <p>Close other copies of the tracker or free this port, then reopen the app.
-                Your saved marks have not been changed.</p>
+                <p>{unavailable}</p>
+                <p>{advice}</p>
                 </body>
                 </html>
                 """);
@@ -82,18 +90,16 @@ internal static class Program
             Reply reply = request?.Cmd switch
             {
                 "find" => Find(),
-                "open" => Open(window),
+                "open" => Open(window, request.Lang == "es"),
                 "read" => Read(request.Path),
-                _ => Fail("Unknown command.", null),
+                _ => Fail("unknown"),
             };
             payload = JsonSerializer.Serialize(reply, ShellJson.Default.Reply);
         }
         catch (Exception e)
         {
             // Nothing here is worth taking the window down for.
-            payload = JsonSerializer.Serialize(
-                Fail("The app could not read that file.", e.Message),
-                ShellJson.Default.Reply);
+            payload = JsonSerializer.Serialize(Fail("failed", detail: e.Message), ShellJson.Default.Reply);
         }
 
         window.SendWebMessage(payload);
@@ -103,43 +109,33 @@ internal static class Program
     {
         string? path = SaveLocator.Find();
         return path is null
-            ? Fail("No save found on this machine.",
-                "Checked:\n" + string.Join('\n', SaveLocator.SearchedFolders()))
+            ? Fail("no-save", detail: string.Join('\n', SaveLocator.SearchedFolders()))
             : Read(path);
     }
 
     /// <summary>A native dialog, opened at the save folder rather than wherever the OS last was.</summary>
-    private static Reply Open(PhotinoWindow window)
+    private static Reply Open(PhotinoWindow window, bool spanish)
     {
         string[] picked = window.ShowOpenFile(
-            "Choose your IMMORTALITY save",
+            spanish ? "Elige tu partida guardada de IMMORTALITY" : "Choose your IMMORTALITY save",
             SaveLocator.StartFolder(),
             false,
-            [("IMMORTALITY save", ["abr"]), ("All files", ["*"])]);
+            [(spanish ? "Partida guardada de IMMORTALITY" : "IMMORTALITY save", ["abr"]),
+                (spanish ? "Todos los archivos" : "All files", ["*"])]);
 
         return picked is { Length: > 0 } ? Read(picked[0]) : new Reply { Cancelled = true };
     }
 
     private static Reply Read(string? path)
     {
-        if (string.IsNullOrEmpty(path)) return Fail("No file was given.", null);
+        if (string.IsNullOrEmpty(path)) return Fail("no-file");
 
         FileInfo file = new(path);
-        if (!file.Exists) return Fail($"\u201C{file.Name}\u201D is no longer there.", "Choose it again.");
-
-        if (file.Length > MaxSaveBytes)
-        {
-            return Fail($"\u201C{file.Name}\u201D is too big to be a save.",
-                "An IMMORTALITY save is well under a megabyte. SaveThumbnail.abr holds the "
-                + "preview images and is not the file you want. Look for SaveGame.abr.");
-        }
+        if (!file.Exists) return Fail("gone", file.Name);
+        if (file.Length > MaxSaveBytes) return Fail("too-big", file.Name);
 
         byte[] bytes = File.ReadAllBytes(path);
-        if (!LooksLikeSave(bytes))
-        {
-            return Fail($"\u201C{file.Name}\u201D is not an IMMORTALITY save.",
-                "The file you want is called SaveGame.abr.");
-        }
+        if (!LooksLikeSave(bytes)) return Fail("not-save", file.Name);
 
         return new Reply { Ok = true, Path = path, Data = Convert.ToBase64String(bytes) };
     }
@@ -151,5 +147,6 @@ internal static class Program
         && BitConverter.ToInt32(bytes, 9) == 1
         && BitConverter.ToInt32(bytes, 13) == 0;
 
-    private static Reply Fail(string error, string? hint) => new() { Ok = false, Error = error, Hint = hint };
+    private static Reply Fail(string code, string? name = null, string? detail = null) =>
+        new() { Code = code, Name = name, Detail = detail };
 }

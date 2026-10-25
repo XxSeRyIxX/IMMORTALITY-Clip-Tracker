@@ -10,13 +10,15 @@ const el = (tag, cls, text) => {
 
 const PREFS_KEY = 'ict.prefs';
 const MARKS_KEY = 'ict.marks';
-const ALL_MOVIES = 'All movies';
+const ALL_MOVIES = '*';
+const { t, tn } = I18n;
 
 // Show me levels. From DETAILS on the app names clips and shows frames.
 const MOVIES = 1, NUMBERS = 2, DETAILS = 3, EVERYTHING = 4;
 
 const state = {
   data: null,        // app/clips.json, fetched once
+  save: null,        // what the clips were built from, to build them again in another language
   clips: [],
   level: 0,          // 0 is the total alone, up to EVERYTHING
   secrets: false,
@@ -27,6 +29,7 @@ const state = {
   revealedDetails: new Set(),
   warned: false,     // the spoiler and content warning has been accepted
   manual: false,     // clips are marked by hand instead of read from a save
+  lang: null,        // 'en' or 'es' once chosen; until then the browser's language decides
 };
 
 /* ------------------------------------------------------------------ *
@@ -41,6 +44,7 @@ function loadPrefs() {
     if (typeof saved.warned === 'boolean') state.warned = saved.warned;
     if (typeof saved.manual === 'boolean') state.manual = saved.manual;
     if (['missing', 'found', 'all'].includes(saved.filter)) state.filter = saved.filter;
+    if (['en', 'es'].includes(saved.lang)) state.lang = saved.lang;
   } catch { /* corrupt or unavailable storage is not worth reporting */ }
 }
 
@@ -48,7 +52,7 @@ function savePrefs() {
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify({
       level: state.level, secrets: state.secrets, filter: state.filter,
-      warned: state.warned, manual: state.manual,
+      warned: state.warned, manual: state.manual, lang: state.lang,
     }));
   } catch { /* private mode */ }
 }
@@ -111,8 +115,7 @@ async function readHandle(handle, { prompt, signal }) {
   checkLoad(signal);
   if (permission !== 'granted') {
     if (!prompt) return false;
-    throw Tracker.saveError('The browser did not let the page read that file.',
-      'Drag it onto the box instead.');
+    throw Tracker.saveError(t('error.permission'), t('hint.drag'));
   }
 
   await applySave(await handle.getFile(), undefined, { kind: 'handle', handle }, signal);
@@ -126,7 +129,8 @@ async function readHandle(handle, { prompt, signal }) {
  * click can grant, so the file is offered by name instead of opening silently.
  */
 function offerAgain(handle) {
-  $('again').textContent = `Open ${handle.name} again`;
+  $('again').dataset.name = handle.name;
+  $('again').textContent = t('again', handle.name);
   $('again-wrap').hidden = false;
   $('again').onclick = () => loading(signal => readHandle(handle, { prompt: true, signal }));
 }
@@ -176,7 +180,7 @@ function reload() {
       }
     } catch (e) {
       throw e.name === 'NotReadableError' || e.name === 'NotFoundError'
-        ? Tracker.saveError('That save is no longer where it was.', 'Use Open save to choose it again.')
+        ? Tracker.saveError(t('error.moved'), t('hint.openSave'))
         : e;
     }
   });
@@ -206,7 +210,7 @@ async function chooseFile() {
 
   const options = {
     id: 'immortality-save',
-    types: [{ description: 'IMMORTALITY save', accept: { 'application/octet-stream': ['.abr'] } }],
+    types: [{ description: t('picker.type'), accept: { 'application/octet-stream': ['.abr'] } }],
   };
   // Read from memory: awaiting anything here would spend the click's user
   // activation, and the picker refuses to open without it.
@@ -219,8 +223,7 @@ async function chooseFile() {
   } catch (e) {
     // Nobody cancels a dialog this fast: the browser refused to show one at all.
     if (e.name === 'AbortError' && performance.now() - asked < 300) {
-      showError(Tracker.saveError('This browser did not open a file picker.',
-        'Drag your save onto the box instead, or open this page in another browser.'));
+      showError(Tracker.saveError(t('error.noPicker'), t('hint.noPicker')));
     } else if (e.name !== 'AbortError') {
       showError(e);
     }
@@ -246,7 +249,7 @@ function ensurePictures() {
   if (picturesPending) return picturesPending;
   picturesPending = Promise.all([
     fetch('pictures.json').then(r => (r.ok ? r.json() : null)),
-    fetch('pictures.bin').then(r => (r.ok ? r.blob() : null)),
+    fetch('pictures.pack').then(r => (r.ok ? r.blob() : null)),
   ]).then(([index, data]) => {
     if (!index || !data) return;
     pictures = { ...index, data };
@@ -302,7 +305,7 @@ function zoomable(name, mark, caption) {
   if (!shot) return null;
   const button = el('button', 'zoom-in');
   button.type = 'button';
-  button.title = 'Show this bigger';
+  button.title = t('zoom');
   button.append(shot);
   button.onclick = () => {
     $('zoom-pic').replaceChildren(marked(name, mark));
@@ -338,6 +341,7 @@ function movieSummaries() {
     const watched = group.filter(c => c.watched).length;
     return {
       name,
+      film: group[0].film,
       watched,
       total: group.length,
       missing: group.length - watched,
@@ -380,10 +384,10 @@ function render() {
 
   $('totals').hidden = state.level === 0;
   $('watched').textContent = watched;
-  $('of-total').textContent = `of ${total} found`;
+  $('of-total').textContent = t('totals.of', total);
   $('meter-fill').style.width = percent(watched, total);
-  $('headline').innerHTML = (missing === 0 ? 'All found.' : `${missing} still to find`)
-    + (pending ? ' <span class="tease">…or maybe not?</span>' : '');
+  $('headline').replaceChildren(missing === 0 ? t('headline.all') : t('headline.missing', missing));
+  if (pending) $('headline').append(' ', el('span', 'tease', t('tease')));
 
   $('board-total').hidden = state.level !== 0;
   $('board-movies').hidden = state.level !== MOVIES;
@@ -399,12 +403,10 @@ function render() {
 function renderTotal(watched, total, missing, pending) {
   const number = $('big-number');
   number.className = missing === 0 ? 'hero done' : 'hero';
-  number.textContent = missing === 0 ? 'All found' : missing;
-  $('big-caption').innerHTML = missing === 0
-    ? (pending ? '<span class="tease">…or maybe not?</span>' : '')
-    : (missing === 1 ? 'clip still to find' : 'clips still to find');
+  number.textContent = missing === 0 ? t('hero.all') : missing;
+  $('big-caption').replaceChildren(missing > 0 ? tn('hero.caption', missing) : pending ? el('span', 'tease', t('tease')) : '');
   $('hero-fill').style.width = percent(watched, total);
-  $('hero-watched').textContent = `${watched} watched`;
+  $('hero-watched').textContent = t('hero.watched', watched);
 }
 
 function renderMovies() {
@@ -413,9 +415,9 @@ function renderMovies() {
   for (const m of movieSummaries()) {
     const card = el('div', 'card');
     const row = el('div', 'row');
-    row.append(el('span', 'name', m.name));
-    row.append(el('span', 'left', m.missing === 0 ? 'All found' : String(m.missing)));
-    if (m.missing) row.append(el('span', 'unit', m.missing === 1 ? 'clip left' : 'clips left'));
+    row.append(el('span', 'name', m.film));
+    row.append(el('span', 'left', m.missing === 0 ? t('hero.all') : String(m.missing)));
+    if (m.missing) row.append(el('span', 'unit', tn('cards.left', m.missing)));
     if (m.hidden) row.append(el('span', 'star', '*'));
     card.append(row);
     const meter = el('div', 'meter');
@@ -455,13 +457,13 @@ function renderMovieList() {
   const list = $('movie-list');
   list.replaceChildren();
   const entries = [{ name: ALL_MOVIES, tally: '', hidden: 0 }].concat(
-    movieSummaries().map(m => ({ name: m.name, tally: `${m.watched}/${m.total}`, hidden: m.hidden })));
+    movieSummaries().map(m => ({ name: m.name, film: m.film, tally: `${m.watched}/${m.total}`, hidden: m.hidden })));
 
   for (const entry of entries) {
     const button = el('button');
     button.type = 'button';
     button.setAttribute('aria-pressed', entry.name === state.movie);
-    button.append(el('span', '', entry.name));
+    button.append(el('span', '', entry.name === ALL_MOVIES ? t('movies.all') : entry.film));
     if (entry.tally) button.append(el('span', 'tally', entry.tally));
     if (entry.hidden) button.append(el('span', 'star', '*'));
     button.onclick = () => { state.movie = entry.name; state.selected = null; render(); };
@@ -472,7 +474,7 @@ function renderMovieList() {
 }
 
 function renderClipList(clips) {
-  $('clip-count').textContent = `${clips.length} clips`;
+  $('clip-count').textContent = tn('list.count', clips.length);
   const host = $('clips');
   host.replaceChildren();
   rowFor.clear();
@@ -494,14 +496,14 @@ function renderClipList(clips) {
     }
 
     const text = el('span', 'text');
-    text.append(el('span', 'title', showDetails(clip) ? clip.title : 'Clip ' + clip.id));
-    text.append(el('span', 'meta', showDetails(clip) ? clip.subtitle : 'details hidden at this setting'));
+    text.append(el('span', 'title', showDetails(clip) ? clip.title : t('list.clip', clip.id)));
+    text.append(el('span', 'meta', showDetails(clip) ? clip.subtitle : t('list.hidden')));
     row.append(text);
 
     const tags = el('span', 'tags');
     // Marking an unwatched clip as a secret is itself a hint.
-    if (clip.secret && state.secrets && (showNames() || clip.watched)) tags.append(el('span', 'tag secret', 'Secret'));
-    if (clip.watched) tags.append(el('span', 'tag found', 'Found'));
+    if (clip.secret && state.secrets && (showNames() || clip.watched)) tags.append(el('span', 'tag secret', t('tag.secret')));
+    if (clip.watched) tags.append(el('span', 'tag found', t('tag.found')));
     row.append(tags);
     const caret = el('span', 'caret', '\u25BE');
     caret.setAttribute('aria-hidden', 'true');
@@ -520,9 +522,7 @@ function renderClipList(clips) {
 
   const empty = $('empty');
   empty.hidden = clips.length > 0;
-  empty.textContent = state.filter === 'found'
-    ? 'You have not found any of these yet.'
-    : 'Nothing left to find here.';
+  empty.textContent = state.filter === 'found' ? t('list.emptyFound') : t('list.emptyMissing');
 }
 
 function applySelection(clips) {
@@ -590,7 +590,7 @@ function fillDetail(host, clip) {
   host.replaceChildren();
   if (!clip) return;
 
-  host.append(el('h3', '', 'CLIP ' + clip.id));
+  host.append(el('h3', '', t('detail.clip', clip.id)));
   if (showDetails(clip)) {
     const still = zoomable(String(clip.id), null, clip.title);
     if (still) {
@@ -601,7 +601,7 @@ function fillDetail(host, clip) {
     host.append(el('p', 'lead', clip.title));
     if (clip.line) host.append(el('p', 'muted', clip.line));
   } else {
-    const reveal = el('button', 'ghost', 'Reveal details');
+    const reveal = el('button', 'ghost', t('detail.reveal'));
     reveal.onclick = () => { state.revealedDetails.add(clip.id); render(); };
     host.append(reveal);
   }
@@ -609,32 +609,32 @@ function fillDetail(host, clip) {
   const slate = el('dl', 'slate');
   const add = (key, value) => {
     const row = el('div');
-    row.append(el('dt', '', key));
+    row.append(el('dt', '', t(`detail.${key}`)));
     row.append(el('dd', '', value || '-'));
     slate.append(row);
   };
   if (showDetails(clip)) {
-    add('Movie', clip.movie);
-    add('Take', clip.take);
-    add('Date', clip.date);
+    add('movie', clip.film);
+    add('take', clip.take);
+    add('date', clip.date);
   }
   // Naming an unwatched clip as a secret is the same hint the list badge withholds.
-  if (showDetails(clip) || clip.watched) add('Kind', clip.kind);
-  add('Status', clip.watched ? 'Found' : 'Still missing');
-  if (clip.watched && clip.views > 0) add('Watched', clip.views === 1 ? 'once' : clip.views + ' times');
+  if (showDetails(clip) || clip.watched) add('kind', t(`kind.${clip.kind}`));
+  add('status', clip.watched ? t('detail.found') : t('detail.missing'));
+  if (clip.watched && clip.views > 0) add('watched', tn('detail.views', clip.views));
   host.append(slate);
 
   if (state.manual) {
     const toggle = el('button', clip.watched ? 'ghost mark-toggle' : 'ghost primary mark-toggle',
-      clip.watched ? 'Mark as not found' : 'Mark as found');
+      clip.watched ? t('detail.markOff') : t('detail.markOn'));
     toggle.onclick = () => setFound(clip.id, !clip.watched);
     host.append(toggle);
   }
 
-  host.append(el('h4', 'eyebrow', 'How to find it'));
+  host.append(el('h4', 'eyebrow', t('detail.how')));
   if (showRoute(clip)) {
     const lines = Tracker.routeFor(clip, byClip);
-    if (!lines.length) host.append(el('p', 'dim', 'No way into this one is recorded.'));
+    if (!lines.length) host.append(el('p', 'dim', t('detail.noRoute')));
 
     const steps = el('ul', 'route');
     for (const step of lines) {
@@ -657,8 +657,8 @@ function fillDetail(host, clip) {
     }
     host.append(steps);
   } else {
-    host.append(el('p', 'dim', 'Hidden so you can keep hunting. Stuck on this one?'));
-    const reveal = el('button', 'ghost', 'Reveal this clip');
+    host.append(el('p', 'dim', t('detail.hidden')));
+    const reveal = el('button', 'ghost', t('detail.revealClip'));
     reveal.onclick = () => { state.revealed.add(clip.id); render(); };
     host.append(reveal);
   }
@@ -672,7 +672,7 @@ async function loadClips(signal) {
   checkLoad(signal);
   if (state.data) return state.data;
   const response = await fetch('clips.json', { signal });
-  if (!response.ok) throw new Error('Could not load the clip list.');
+  if (!response.ok) throw new Error(t('error.list'));
   const data = await response.json();
   checkLoad(signal);
   state.data = data;
@@ -703,9 +703,7 @@ function setBusy(on) {
 
 const runLoad = createLoader(setBusy, showError, () => new Promise(requestAnimationFrame));
 const runProgressImport = createLoader(() => {}, () => {
-  if (state.manual && $('marking').open) {
-    $('code-note').textContent = 'Could not read that progress file. Try opening it again or paste its code.';
-  }
+  if (state.manual && $('marking').open) $('code-note').textContent = t('code.fileBad');
 });
 let loadRequested = false;
 
@@ -730,11 +728,7 @@ async function applySave(input, name, nextSource = source, signal) {
     Tracker.checkSaveSize(input.size, name && basename(name));
     const head = new Uint8Array(await input.slice(0, 17).arrayBuffer());
     checkLoad(signal);
-    if (!Tracker.looksLikeSave(head)) {
-      throw Tracker.saveError(
-        `“${basename(name)}” is not an IMMORTALITY save.`,
-        'The file you want is called SaveGame.abr. The folders it lives in are listed below.');
-    }
+    if (!Tracker.looksLikeSave(head)) throw Tracker.notSave(basename(name));
     buffer = await input.arrayBuffer();
   } else {
     buffer = input;
@@ -749,6 +743,7 @@ async function applySave(input, name, nextSource = source, signal) {
 }
 
 function applyClips(save) {
+  state.save = save;
   state.clips = Tracker.buildClips(state.data, save);
   byClip = new Map(state.clips.map(clip => [clip.id, clip]));
   listKey = '';
@@ -810,8 +805,7 @@ function loadMarks() {
 function warnMarksStorage() {
   if (!marksKept) return;
   marksKept = false;
-  showError(Tracker.saveError('This browser is not keeping your marks.',
-    'Copy your progress code from Mark found before you close the page.'));
+  showError(Tracker.saveError(t('error.marks'), t('hint.marks')));
 }
 
 function saveMarks() {
@@ -902,11 +896,11 @@ function renderPicks() {
     if (clip.line && (clip.watched || showNames() || shared)) {
       pick.append(el('span', 'said', `\u201C${clip.line}\u201D`));
     } else if (byLine) {
-      pick.append(el('span', 'said', `says \u201C\u2026${query.trim()}\u2026\u201D`));
+      pick.append(el('span', 'said', t('picks.says', query.trim())));
     }
     const tags = el('span', 'tags');
-    if (clip.secret && (showNames() || clip.watched)) tags.append(el('span', 'tag secret', 'Secret'));
-    tags.append(el('span', clip.watched ? 'tag found' : 'tag', clip.watched ? 'Found' : 'Missing'));
+    if (clip.secret && (showNames() || clip.watched)) tags.append(el('span', 'tag secret', t('tag.secret')));
+    tags.append(el('span', clip.watched ? 'tag found' : 'tag', clip.watched ? t('tag.found') : t('tag.missing')));
     pick.append(tags);
     const look = still ? '' : pick.textContent;
     if (look && looks.has(look)) lookalikes = true;
@@ -921,11 +915,10 @@ function renderPicks() {
   }
 
   $('picks-note').textContent = !query.trim() ? ''
-    : !hits.length ? 'Nothing matches. Check the film, take and date, or try other words from the clip.'
-      + (state.secrets ? '' : ' Secret clips are only searched with Secrets on.')
+    : !hits.length ? [t('picks.none'), state.secrets ? '' : t('picks.noSecrets')].filter(Boolean).join(' ')
       : [
-        hits.length > MAX_PICKS ? `${hits.length - MAX_PICKS} more match. Add the take or the date to narrow it down.` : '',
-        lookalikes && !showNames() ? 'Some of these look the same here. With Show me at Clip details, each one shows its picture.' : '',
+        hits.length > MAX_PICKS ? tn('picks.more', hits.length - MAX_PICKS) : '',
+        lookalikes && !showNames() ? t('picks.lookalike') : '',
       ].filter(Boolean).join(' ');
 }
 
@@ -934,7 +927,7 @@ function loadCode(text) {
   if (!state.manual || !state.data) return;
   const found = Tracker.decodeMarks(text, state.data.clips.length);
   if (!found) {
-    $('code-note').textContent = 'That progress code is incomplete, damaged or for a different clip list. Paste the complete ICT1- code.';
+    $('code-note').textContent = t('code.bad');
     return;
   }
   const before = marks.size ? Tracker.encodeMarks(marks, state.data.clips.length) : '';
@@ -944,8 +937,7 @@ function loadCode(text) {
   render();
   renderMarking();
   $('code-in').value = '';
-  $('code-note').textContent = `Loaded ${marks.size} found ${marks.size === 1 ? 'clip' : 'clips'}.`
-    + (before ? ` The marks it replaced were ${before}` : '');
+  $('code-note').textContent = [tn('code.loaded', marks.size), before ? t('code.replaced', before) : ''].filter(Boolean).join(' ');
 }
 
 function importProgressFile(file) {
@@ -999,14 +991,14 @@ $('code-copy').addEventListener('click', async () => {
   const out = $('code-out');
   try {
     await navigator.clipboard.writeText(out.value);
-    $('code-note').textContent = 'Copied.';
+    $('code-note').textContent = t('code.copied');
   } catch {
     out.select();
-    $('code-note').textContent = 'Selected. Copy it with Ctrl+C, or Cmd+C on a Mac.';
+    $('code-note').textContent = t('code.selected');
   }
 });
 $('code-save').addEventListener('click', () => {
-  const text = `IMMORTALITY Clip Tracker progress, ${new Date().toISOString().slice(0, 10)}\n${$('code-out').value}\n`;
+  const text = `${t('code.fileTitle', new Date().toISOString().slice(0, 10))}\n${$('code-out').value}\n`;
   const link = el('a');
   link.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
   link.download = 'immortality-progress.txt';
@@ -1127,16 +1119,20 @@ new ResizeObserver(() => {
     toast.hidden ? '0px' : `calc(${toast.offsetHeight}px + .6rem)`);
 }).observe($('toast'));
 
-/** Closes on the X, on Escape, and on a click outside it. */
+/** Closes on the X, on Escape, and on a click outside it; a drag that only ends outside, selecting text, does not. */
 function wireDialog(id) {
   const dialog = $(id);
-  dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());
-  dialog.addEventListener('click', e => {
-    if (e.target !== dialog || e.detail === 0) return;
+  const outside = e => {
     const box = dialog.getBoundingClientRect();
-    const inside = e.clientX >= box.left && e.clientX <= box.right
-      && e.clientY >= box.top && e.clientY <= box.bottom;
-    if (!inside) dialog.close();
+    return e.target === dialog
+      && (e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom);
+  };
+  let pressedOutside = false;
+  dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('pointerdown', e => { pressedOutside = outside(e); });
+  dialog.addEventListener('click', e => {
+    if (pressedOutside && outside(e)) dialog.close();
+    pressedOutside = false;
   });
   // Embedded webviews do not always deliver the native Escape-to-cancel.
   dialog.addEventListener('keydown', e => {
@@ -1156,10 +1152,38 @@ $('about-open').addEventListener('click', () => $('about').showModal());
 $('install').addEventListener('click', () => $('get').showModal());
 
 /* ------------------------------------------------------------------ *
+ * Language
+ * ------------------------------------------------------------------ */
+
+/** Puts the page, and everything the scripts wrote into it, in the current language. */
+function showLanguage() {
+  I18n.translatePage(document);
+  for (const button of document.querySelectorAll('[data-lang]')) {
+    button.setAttribute('aria-pressed', button.dataset.lang === I18n.lang());
+  }
+  if ($('again').dataset.name) $('again').textContent = t('again', $('again').dataset.name);
+  $('code-note').textContent = '';
+  // Titles name the films, and "Other" is a word of the app's own.
+  if (state.save) applyClips(state.save);
+  redraw();
+  if ($('marking').open) renderPicks();
+}
+
+document.querySelector('.lang').addEventListener('click', e => {
+  const button = e.target.closest('[data-lang]');
+  if (!button) return;
+  state.lang = I18n.setLang(button.dataset.lang);
+  savePrefs();
+  showLanguage();
+});
+
+/* ------------------------------------------------------------------ *
  * Start
  * ------------------------------------------------------------------ */
 
 loadPrefs();
+I18n.setLang(state.lang || I18n.langForBrowser(navigator.languages));
+showLanguage();
 syncControls();
 
 if (native) {

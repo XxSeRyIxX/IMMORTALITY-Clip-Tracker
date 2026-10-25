@@ -1,9 +1,12 @@
 const assert = require('node:assert/strict');
+const { readdirSync } = require('node:fs');
+const { join } = require('node:path');
 const { test } = require('node:test');
 const vm = require('node:vm');
 const { readApp, loadScript, saveFixture } = require('./helpers.cjs');
 
-const Tracker = loadScript('core.js', 'Tracker');
+const I18n = loadScript('i18n.js', 'I18n');
+const Tracker = loadScript('core.js', 'Tracker', { I18n });
 const data = JSON.parse(readApp('clips.json'));
 const ids = new Set(data.clips.map(clip => clip.id));
 
@@ -122,7 +125,7 @@ test('oversized saves are rejected before parsing', () => {
 
 test('clip identifiers, references and packed pictures are consistent', () => {
   const index = JSON.parse(readApp('pictures.json'));
-  const archive = readApp('pictures.bin', null);
+  const archive = readApp('pictures.pack', null);
   assert.equal(ids.size, data.clips.length);
   for (const [position, clip] of data.clips.entries()) {
     assert.equal(clip.id, position + 1);
@@ -147,7 +150,14 @@ test('clip identifiers, references and packed pictures are consistent', () => {
 });
 
 test('all shipped scripts have valid JavaScript syntax', () => {
-  for (const name of ['core.js', 'loading.js', 'native.js', 'app.js', 'sw.js']) {
+  for (const name of ['i18n.js', 'core.js', 'loading.js', 'native.js', 'app.js', 'sw.js']) {
     assert.doesNotThrow(() => new vm.Script(readApp(name), { filename: name }));
   }
+});
+
+test('nothing the site ships has a name download managers take over, even when the page only reads it', () => {
+  // IDM's default file types: in Chrome it takes these over from a page's own requests, and the page never gets them.
+  const grabbed = /\.(3gp|7z|aac|ace|aif|apk|arj|asf|avi|bin|bz2|exe|gz|gzip|img|iso|lzh|m4a|m4v|mkv|mov|mp3|mp4|mpa|mpe|mpeg|mpg|msi|msu|ogg|ogv|pdf|plj|pps|ppt|qt|r\d\d|ra|rar|rm|rmvb|sea|sit|sitx|tar|tif|tiff|wav|webm|wma|wmv|z|zip)$/i;
+  const shipped = readdirSync(join(__dirname, '..', 'app'), { recursive: true }).map(String);
+  assert.deepEqual(shipped.filter(name => grabbed.test(name)), []);
 });

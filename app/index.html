@@ -3,18 +3,46 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>IMMORTALITY Clip Tracker</title>
+<title>IMMORTALITY Clip Tracker: find every missing clip for 100%</title>
 <meta name="description" content="Shows which IMMORTALITY clips you have not watched yet, read from your save or marked by hand on a console. Spoiler-free by default. Nothing is uploaded.">
+<meta name="author" content="XxSeRyIxX">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0a0908">
+<link rel="canonical" href="https://xxseryixx.github.io/IMMORTALITY-Clip-Tracker/">
 <link rel="icon" href="icon.png">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="style.css">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="IMMORTALITY Clip Tracker">
 <meta property="og:title" content="IMMORTALITY Clip Tracker">
 <meta property="og:description" content="Which clips have you missed? Drop your save in, or mark them by hand on a console. Spoiler-free by default, and nothing leaves your browser.">
-<meta property="og:type" content="website">
-<meta property="og:image" content="icon.png">
+<meta property="og:url" content="https://xxseryixx.github.io/IMMORTALITY-Clip-Tracker/">
+<meta property="og:image" content="https://xxseryixx.github.io/IMMORTALITY-Clip-Tracker/social.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="IMMORTALITY Clip Tracker: find every missing clip. Spoiler-free by default.">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="es_ES">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "IMMORTALITY Clip Tracker",
+  "url": "https://xxseryixx.github.io/IMMORTALITY-Clip-Tracker/",
+  "description": "Shows which IMMORTALITY clips you have not watched yet, read from your save or marked by hand on a console, with routes to each one. Spoiler-free by default.",
+  "image": "https://xxseryixx.github.io/IMMORTALITY-Clip-Tracker/social.png",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web, Windows, macOS, Linux",
+  "inLanguage": ["en", "es"],
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+  "author": { "@type": "Person", "name": "XxSeRyIxX", "url": "https://github.com/XxSeRyIxX" },
+  "about": { "@type": "VideoGame", "name": "IMMORTALITY" }
+}
+</script>
 </head>
 <body>
 <script>
@@ -34,37 +62,41 @@
 <header class="bar">
   <div class="wordmark">
     <h1>IMMORTALITY</h1>
-    <p class="slug">Clip Tracker <span class="dim">by</span>
+    <p class="slug">Clip Tracker <span class="dim" data-i18n="by">by</span>
       <a href="https://steamcommunity.com/id/xxseryixx/" target="_blank" rel="noopener">XxSeRyIxX</a>
     </p>
   </div>
 
   <div class="controls" hidden id="controls">
     <label class="field">
-      <span class="eyebrow">Secrets</span>
-      <button id="secrets" class="switch" role="switch" aria-checked="false" aria-label="Include secret clips">
+      <span class="eyebrow" data-i18n="secrets">Secrets</span>
+      <button id="secrets" class="switch" role="switch" aria-checked="false" aria-label="Include secret clips" data-i18n-aria-label="secrets.label">
         <span class="knob"></span>
       </button>
     </label>
     <label class="field">
-      <span class="eyebrow">Show me</span>
+      <span class="eyebrow" data-i18n="level">Show me</span>
       <select id="level">
-        <option value="0">Total only</option>
-        <option value="1">Per movie</option>
-        <option value="2">Clip numbers</option>
-        <option value="3">Clip details</option>
-        <option value="4">Everything</option>
+        <option value="0" data-i18n="level.0">Total only</option>
+        <option value="1" data-i18n="level.1">Per movie</option>
+        <option value="2" data-i18n="level.2">Clip numbers</option>
+        <option value="3" data-i18n="level.3">Clip details</option>
+        <option value="4" data-i18n="level.4">Everything</option>
       </select>
     </label>
-    <button id="mark" class="ghost primary" hidden>Mark found</button>
-    <button id="reset" class="ghost">Open save</button>
-    <button id="refresh" class="ghost" hidden>Reload</button>
+    <button id="mark" class="ghost primary" hidden data-i18n="mark">Mark found</button>
+    <button id="reset" class="ghost" data-i18n="reset">Open save</button>
+    <button id="refresh" class="ghost" hidden data-i18n="refresh">Reload</button>
   </div>
 
-  <button id="back" class="ghost" hidden>Back</button>
+  <button id="back" class="ghost" hidden data-i18n="back">Back</button>
 
-  <button id="about-open" class="ghost">About</button>
-  <button id="install" class="ghost primary">Get the app</button>
+  <div class="lang" role="group" aria-label="Language" data-i18n-aria-label="lang">
+    <button type="button" data-lang="en">EN</button>
+    <button type="button" data-lang="es">ES</button>
+  </div>
+  <button id="about-open" class="ghost" data-i18n="about">About</button>
+  <button id="install" class="ghost primary" data-i18n="install">Get the app</button>
 </header>
 
 <div id="toast" class="toast" role="alert" hidden>
@@ -72,56 +104,57 @@
     <strong id="toast-title"></strong>
     <span id="toast-hint"></span>
   </div>
-  <button id="toast-close" class="icon" aria-label="Dismiss">&#10005;</button>
+  <button id="toast-close" class="icon" aria-label="Dismiss" data-i18n-aria-label="dismiss">&#10005;</button>
 </div>
 
-<button id="to-top" class="to-top" type="button" aria-label="Back to the top" title="Back to the top" hidden>
+<button id="to-top" class="to-top" type="button" aria-label="Back to the top" title="Back to the top"
+        data-i18n-aria-label="toTop" data-i18n-title="toTop" hidden>
   <svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 5l4-4 4 4"/></svg>
 </button>
 
 <main>
 
   <p id="boot" class="busy"><span class="spinner"></span>
-    <span class="for-save">Looking for your save&hellip;</span><span class="for-marks">Opening your marks&hellip;</span></p>
+    <span class="for-save" data-i18n="boot.save">Looking for your save&hellip;</span><span class="for-marks" data-i18n="boot.marks">Opening your marks&hellip;</span></p>
 
   <!-- drop zone -->
   <section id="intro">
     <div id="drop" class="drop">
-      <p class="big">Drop your save here</p>
-      <p class="muted">or <button type="button" id="choose" class="link">choose a file</button><input id="file" type="file" accept=".abr" hidden></p>
-      <p class="eyebrow mt">SaveGame.abr &middot; read on your own machine &middot; never uploaded</p>
-      <p class="muted mt">No save file, on a console for example?
-        <button type="button" id="by-hand" class="link">Mark clips by hand</button></p>
+      <p class="big" data-i18n="drop">Drop your save here</p>
+      <p class="muted"><span data-i18n="drop.or">or</span> <button type="button" id="choose" class="link" data-i18n="drop.choose">choose a file</button><input id="file" type="file" accept=".abr" hidden></p>
+      <p class="eyebrow mt" data-i18n="drop.note">SaveGame.abr &middot; read on your own machine &middot; never uploaded</p>
+      <p class="muted mt"><span data-i18n="drop.console">No save file, on a console for example?</span>
+        <button type="button" id="by-hand" class="link" data-i18n="drop.byHand">Mark clips by hand</button></p>
       <p class="mt" id="again-wrap" hidden>
         <button id="again" class="ghost primary"></button>
       </p>
     </div>
 
-    <p id="busy" class="busy" hidden><span class="spinner"></span> Reading your save&hellip;</p>
+    <p id="busy" class="busy" hidden><span class="spinner"></span> <span data-i18n="busy">Reading your save&hellip;</span></p>
 
     <div class="cols">
       <div>
-        <h2 class="eyebrow">Where is my save?</h2>
+        <h2 class="eyebrow" data-i18n="where">Where is my save?</h2>
         <ul class="paths">
           <li><b>Windows</b><code>%USERPROFILE%\AppData\LocalLow\Half Mermaid Productions\Immortality\&lt;steam-id&gt;\</code></li>
           <li><b>macOS</b><code>~/Library/Application Support/Half Mermaid Productions/Immortality/</code></li>
           <li><b>Linux</b><code>~/.config/unity3d/Half Mermaid Productions/Immortality/</code></li>
           <li><b>Steam Deck / Proton</b><code>~/.steam/steam/steamapps/compatdata/1350200/pfx/drive_c/users/steamuser/AppData/LocalLow/Half Mermaid Productions/Immortality/</code></li>
         </ul>
-        <p class="dim">Can't find it? Steam keeps a copy:
+        <p class="dim" data-i18n="where.cloud">Can't find it? Steam keeps a copy:
           <a href="https://store.steampowered.com/account/remotestorageapp/?appid=1350200" target="_blank" rel="noopener">download it from Steam Cloud</a>.</p>
       </div>
       <div>
-        <h2 class="eyebrow">Spoiler-free by default</h2>
-        <p>This page opens at the most guarded setting: a single number, nothing else.
+        <h2 class="eyebrow" data-i18n="spoilers">Spoiler-free by default</h2>
+        <p data-i18n="spoilers.text">This page opens at the most guarded setting: a single number, nothing else.
            You decide how much more it reveals, one step at a time.</p>
-        <h2 class="eyebrow mt">Nothing leaves your machine</h2>
-        <p>The save is read here, in the page. It is never uploaded, and no part of
+        <h2 class="eyebrow mt" data-i18n="private">Nothing leaves your machine</h2>
+        <p data-i18n="private.text">The save is read here, in the page. It is never uploaded, and no part of
            it is sent anywhere.</p>
         <div id="desktop-offer">
-          <h2 class="eyebrow mt">Prefer a desktop app?</h2>
-          <p>Same tracker, installable, and it finds the save on its own.</p>
-          <p><a href="https://github.com/XxSeRyIxX/IMMORTALITY-Clip-Tracker/releases" target="_blank" rel="noopener">Download for Windows, macOS or Linux</a></p>
+          <h2 class="eyebrow mt" data-i18n="desktop">Prefer a desktop app?</h2>
+          <p data-i18n="desktop.text">Same tracker, installable, and it finds the save on its own.</p>
+          <p><a href="https://github.com/XxSeRyIxX/IMMORTALITY-Clip-Tracker/releases" target="_blank" rel="noopener" data-i18n="desktop.link">Download for Windows, macOS or Linux</a></p>
         </div>
       </div>
     </div>
@@ -144,34 +177,34 @@
       <p id="big-caption"></p>
       <div class="meter wide"><i id="hero-fill"></i></div>
       <p id="hero-watched" class="muted slug"></p>
-      <p class="dim mt">Nothing here spoils anything.</p>
-      <p class="dim">Open it up with <b>Show me</b> when you want more.</p>
-      <p><button class="link" data-more>Break it down by movie</button></p>
+      <p class="dim mt" data-i18n="total.safe">Nothing here spoils anything.</p>
+      <p class="dim" data-i18n="total.more">Open it up with <b>Show me</b> when you want more.</p>
+      <p><button class="link" data-more data-i18n="total.next">Break it down by movie</button></p>
     </div>
 
     <!-- per movie -->
     <div id="board-movies" class="board" hidden>
-      <h2 class="eyebrow center">Still to find</h2>
+      <h2 class="eyebrow center" data-i18n="movies.title">Still to find</h2>
       <div id="movie-cards"></div>
-      <p><button class="link" data-more>Show which clip numbers they are</button></p>
+      <p><button class="link" data-more data-i18n="movies.next">Show which clip numbers they are</button></p>
     </div>
 
     <!-- browser -->
     <div id="browser" class="browser" hidden>
       <aside>
         <div class="segmented" id="filters">
-          <button type="button" data-filter="missing" aria-pressed="true">Missing</button>
-          <button type="button" data-filter="found" aria-pressed="false">Found</button>
-          <button type="button" data-filter="all" aria-pressed="false">All</button>
+          <button type="button" data-filter="missing" aria-pressed="true" data-i18n="filter.missing">Missing</button>
+          <button type="button" data-filter="found" aria-pressed="false" data-i18n="filter.found">Found</button>
+          <button type="button" data-filter="all" aria-pressed="false" data-i18n="filter.all">All</button>
         </div>
-        <h2 class="eyebrow">Movies</h2>
+        <h2 class="eyebrow" data-i18n="movies">Movies</h2>
         <ul id="movie-list"></ul>
       </aside>
       <div class="listing">
         <h2 class="eyebrow" id="clip-count"></h2>
         <ul id="clips"></ul>
         <p id="empty" class="dim center" hidden></p>
-        <p class="dim center mt">Use <b>&uarr;</b> and <b>&darr;</b> to move through the list.</p>
+        <p class="dim center mt" data-i18n="keys">Use <b>&uarr;</b> and <b>&darr;</b> to move through the list.</p>
       </div>
       <aside class="detail pane" id="detail"></aside>
     </div>
@@ -181,82 +214,82 @@
 <dialog id="about" class="sheet">
   <div class="sheet-head">
     <div>
-      <h2>About</h2>
-      <p class="eyebrow">and who it is built on</p>
+      <h2 data-i18n="about">About</h2>
+      <p class="eyebrow" data-i18n="about.sub">and who it is built on</p>
     </div>
-    <button class="icon" data-close aria-label="Close">&#10005;</button>
+    <button class="icon" data-close aria-label="Close" data-i18n-aria-label="close">&#10005;</button>
   </div>
 
   <div class="sheet-body">
-     <p>Working out which clips are still missing can become guesswork in the last
+    <p data-i18n="about.1">Working out which clips are still missing can become guesswork in the last
        stretch of a completionist run.</p>
-    <p>This works it out from your own save file, or from the clips you mark by hand
+    <p data-i18n="about.2">This works it out from your own save file, or from the clips you mark by hand
        when there is no save to read, on a console for instance. Either way it stays on
        your own machine. Nothing is uploaded, and no part of it is sent anywhere.</p>
-    <p>It exists because other people solved the hard parts first and published what
+    <p data-i18n="about.3">It exists because other people solved the hard parts first and published what
        they found.</p>
 
-    <h3 class="eyebrow section">Standing on</h3>
+    <h3 class="eyebrow section" data-i18n="about.on">Standing on</h3>
     <div class="credit">
-      <b>The clip list</b>
-      <p>The guide that first mapped every clip with its take and its date.
+      <b data-i18n="about.list">The clip list</b>
+      <p data-i18n="about.list.text">The guide that first mapped every clip with its take and its date.
          Everything shown here is read out of the game itself, and agrees
          with 781 of the 792 match-cuts this guide lists.</p>
       <p>
-        <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3342793414" target="_blank" rel="noopener">Open on Steam</a>
+        <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3342793414" target="_blank" rel="noopener" data-i18n="steam.open">Open on Steam</a>
         &middot;
-        <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=2860754029" target="_blank" rel="noopener">the completionist guide it came from</a>
+        <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=2860754029" target="_blank" rel="noopener" data-i18n="about.list.origin">the completionist guide it came from</a>
       </p>
     </div>
     <div class="credit">
-      <b>Reading the save</b>
-      <p>Worked out that SaveGame.abr holds your view history, and showed how to get
+      <b data-i18n="about.save">Reading the save</b>
+      <p data-i18n="about.save.text">Worked out that SaveGame.abr holds your view history, and showed how to get
          the watched clip IDs out of it.</p>
-      <p><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3731545899" target="_blank" rel="noopener">Open on Steam</a></p>
+      <p><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3731545899" target="_blank" rel="noopener" data-i18n="steam.open">Open on Steam</a></p>
     </div>
     <div class="credit">
-      <b>The idea</b>
-      <p>The original &ldquo;which videos have I actually seen?&rdquo; counter, and the
+      <b data-i18n="about.idea">The idea</b>
+      <p data-i18n="about.idea.text">The original &ldquo;which videos have I actually seen?&rdquo; counter, and the
          reason any of this exists.</p>
-      <p><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3204009205" target="_blank" rel="noopener">Open on Steam</a></p>
+      <p><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3204009205" target="_blank" rel="noopener" data-i18n="steam.open">Open on Steam</a></p>
     </div>
 
-    <h3 class="eyebrow section">Licence</h3>
-    <p>Free software under the GNU AGPL v3. Not affiliated with Half Mermaid or Sam Barlow.</p>
-    <p>The pictures are frames from IMMORTALITY, &copy; Half Mermaid Productions, shown
+    <h3 class="eyebrow section" data-i18n="about.licence">Licence</h3>
+    <p data-i18n="about.licence.text">Free software under the GNU AGPL v3. Not affiliated with Half Mermaid or Sam Barlow.</p>
+    <p data-i18n="about.pictures">The pictures are frames from IMMORTALITY, &copy; Half Mermaid Productions, shown
        here only so you can tell one clip from another and see where to click. They are
        not covered by that licence, and will be removed on request. The film contains
       nudity and violence; the frames are taken from it, and are shown when you
       choose a detail level or reveal an individual clip.</p>
-    <p><a href="https://github.com/XxSeRyIxX/IMMORTALITY-Clip-Tracker" target="_blank" rel="noopener">Source code on GitHub</a></p>
+    <p><a href="https://github.com/XxSeRyIxX/IMMORTALITY-Clip-Tracker" target="_blank" rel="noopener" data-i18n="about.source">Source code on GitHub</a></p>
   </div>
 </dialog>
 
 <dialog id="get" class="sheet">
   <div class="sheet-head">
     <div>
-      <h2>Get the app</h2>
-      <p class="eyebrow">two ways to keep it</p>
+      <h2 data-i18n="install">Get the app</h2>
+      <p class="eyebrow" data-i18n="get.sub">two ways to keep it</p>
     </div>
-    <button class="icon" data-close aria-label="Close">&#10005;</button>
+    <button class="icon" data-close aria-label="Close" data-i18n-aria-label="close">&#10005;</button>
   </div>
 
   <div class="sheet-body">
     <div class="credit">
-      <b>Install this page</b>
-      <p>Keeps this page on your desktop or home screen, works offline after an online
+      <b data-i18n="get.page">Install this page</b>
+      <p data-i18n="get.page.text">Keeps this page on your desktop or home screen, works offline after an online
         visit, and checks for updates when opened online.</p>
-      <p><button id="install-now" class="ghost primary">Install</button></p>
-      <p class="dim" id="install-note">Your browser decides when to offer this. If the
+      <p><button id="install-now" class="ghost primary" data-i18n="get.install">Install</button></p>
+      <p class="dim" id="install-note" data-i18n="get.note">Your browser decides when to offer this. If the
          button does nothing, use your browser menu. In Chrome and Edge it is
          <b>Install this site as an app</b>.</p>
     </div>
 
     <div class="credit">
-      <b>Download the desktop app</b>
-      <p>Finds your save on its own, with no folder prompts. Windows, macOS and Linux,
+      <b data-i18n="get.desktop">Download the desktop app</b>
+      <p data-i18n="get.desktop.text">Finds your save on its own, with no folder prompts. Windows, macOS and Linux,
          one self-contained file.</p>
-      <p><a class="ghost" href="https://github.com/XxSeRyIxX/IMMORTALITY-Clip-Tracker/releases" target="_blank" rel="noopener">Open the releases page</a></p>
+      <p><a class="ghost" href="https://github.com/XxSeRyIxX/IMMORTALITY-Clip-Tracker/releases" target="_blank" rel="noopener" data-i18n="get.releases">Open the releases page</a></p>
     </div>
   </div>
 </dialog>
@@ -264,31 +297,31 @@
 <dialog id="warn" class="sheet">
   <div class="sheet-head">
     <div>
-      <h2>Before you open this up</h2>
-      <p class="eyebrow">one time only</p>
+      <h2 data-i18n="warn">Before you open this up</h2>
+      <p class="eyebrow" data-i18n="warn.sub">one time only</p>
     </div>
-    <button class="icon" data-close aria-label="Close">&#10005;</button>
+    <button class="icon" data-close aria-label="Close" data-i18n-aria-label="close">&#10005;</button>
   </div>
 
   <div class="sheet-body">
-    <p>From here on the tracker stops being coy. It will name every clip, quote the
+    <p data-i18n="warn.text">From here on the tracker stops being coy. It will name every clip, quote the
        first thing said in it, and show you a frame from it, including clips you
        have not found yet.</p>
     <div class="credit">
-      <b>It will spoil the game</b>
-      <p>Finding out what is on these tapes is the whole of IMMORTALITY. This takes
+      <b data-i18n="warn.spoil">It will spoil the game</b>
+      <p data-i18n="warn.spoil.text">Finding out what is on these tapes is the whole of IMMORTALITY. This takes
          that away. There is no putting it back.</p>
     </div>
     <div class="credit">
-      <b>Some of it is explicit</b>
-      <p>The film contains nudity and violence, and the frames shown here are taken
+      <b data-i18n="warn.explicit">Some of it is explicit</b>
+      <p data-i18n="warn.explicit.text">The film contains nudity and violence, and the frames shown here are taken
          from it. Consider where you are sitting.</p>
     </div>
-    <p class="dim">You can go back to <b>Total only</b> at any time, and this will
+    <p class="dim" data-i18n="warn.back">You can go back to <b>Total only</b> at any time, and this will
        not be asked again.</p>
     <p>
-      <button id="warn-yes" class="ghost primary">Show me the clips</button>
-      <button id="warn-no" class="ghost">Not yet</button>
+      <button id="warn-yes" class="ghost primary" data-i18n="warn.yes">Show me the clips</button>
+      <button id="warn-no" class="ghost" data-i18n="warn.no">Not yet</button>
     </p>
   </div>
 </dialog>
@@ -296,42 +329,42 @@
 <dialog id="marking" class="sheet">
   <div class="sheet-head">
     <div>
-      <h2>Mark what you have found</h2>
-      <p class="eyebrow">kept on this device as you go</p>
+      <h2 data-i18n="marking">Mark what you have found</h2>
+      <p class="eyebrow" data-i18n="marking.sub">kept on this device as you go</p>
     </div>
-    <button class="icon" data-close aria-label="Close">&#10005;</button>
+    <button class="icon" data-close aria-label="Close" data-i18n-aria-label="close">&#10005;</button>
   </div>
 
   <div class="sheet-body">
     <label class="search">
-      <span class="eyebrow">Find a clip</span>
+      <span class="eyebrow" data-i18n="find">Find a clip</span>
       <input id="find" type="search" autocomplete="off" spellcheck="false"
-             placeholder="MINSKY 4B, 27/07/1970, or words from the clip">
+             placeholder="MINSKY 4B, 27/07/1970, or words from the clip" data-i18n-placeholder="find.placeholder">
     </label>
-    <p class="dim">Type what the game shows under the clip: the film, the take and the date.
+    <p class="dim" data-i18n="find.text">Type what the game shows under the clip: the film, the take and the date.
        Clips that share all three can be told apart by a few words of the first thing said.
        Only clips that match are shown.</p>
     <ul id="picks" class="picks"></ul>
     <p id="picks-note" class="dim" aria-live="polite"></p>
 
-    <h3 class="eyebrow section">Move or back up</h3>
+    <h3 class="eyebrow section" data-i18n="move">Move or back up</h3>
     <div class="credit">
-      <b>Your progress code</b>
-      <p>Every clip marked here, in one line. Paste it on another device, or keep
+      <b data-i18n="code">Your progress code</b>
+      <p data-i18n="code.text">Every clip marked here, in one line. Paste it on another device, or keep
          it somewhere safe.</p>
       <div class="code">
-        <input id="code-out" readonly aria-label="Your progress code">
-        <button id="code-copy" class="ghost">Copy</button>
-        <button id="code-save" class="ghost">Save as file</button>
+        <input id="code-out" readonly aria-label="Your progress code" data-i18n-aria-label="code">
+        <button id="code-copy" class="ghost" data-i18n="code.copy">Copy</button>
+        <button id="code-save" class="ghost" data-i18n="code.save">Save as file</button>
       </div>
     </div>
     <div class="credit">
-      <b>Load a code</b>
-      <p>Replaces the marks here with the ones in the code.</p>
+      <b data-i18n="code.load">Load a code</b>
+      <p data-i18n="code.load.text">Replaces the marks here with the ones in the code.</p>
       <div class="code">
-        <input id="code-in" spellcheck="false" autocomplete="off" placeholder="ICT1-&hellip;" aria-label="Progress code to load">
-        <button id="code-load" class="ghost">Load</button>
-        <button id="code-open" class="ghost">Open a file</button>
+        <input id="code-in" spellcheck="false" autocomplete="off" placeholder="ICT1-&hellip;" aria-label="Progress code to load" data-i18n-aria-label="code.in">
+        <button id="code-load" class="ghost" data-i18n="code.loadButton">Load</button>
+        <button id="code-open" class="ghost" data-i18n="code.open">Open a file</button>
         <input id="code-file" type="file" accept=".txt,text/plain" hidden>
       </div>
     </div>
@@ -340,13 +373,14 @@
 </dialog>
 
 <dialog id="zoom" class="zoom">
-  <button class="ghost zoom-close" data-close aria-label="Close">&#x2715;</button>
+  <button class="ghost zoom-close" data-close aria-label="Close" data-i18n-aria-label="close">&#x2715;</button>
   <figure>
     <div id="zoom-pic"></div>
     <figcaption id="zoom-cap"></figcaption>
   </figure>
 </dialog>
 
+<script src="i18n.js"></script>
 <script src="core.js"></script>
 <script src="loading.js"></script>
 <script src="native.js"></script>
